@@ -137,6 +137,7 @@ function resourceOptions(items: Array<{ name: string; namespace?: string }>, cre
 }
 
 function secretTypeLabel(secretType: SecretType) {
+  if (secretType === "kubernetes.io/tls") return "TLS secret";
   return secretTypeOptions.find((option) => option.value === secretType)?.label ?? secretType;
 }
 
@@ -2272,7 +2273,13 @@ export function SecretBuilderPanel({
   setNotice,
   clusterOptions,
   showApplyButton = true,
-}: { form: SecretForm; setForm: Dispatch<SetStateAction<SecretForm>>; showApplyButton?: boolean } & PropsCommon) {
+  secretTypeChoices,
+}: {
+  form: SecretForm;
+  setForm: Dispatch<SetStateAction<SecretForm>>;
+  showApplyButton?: boolean;
+  secretTypeChoices?: Array<{ value: SecretType; label: string }>;
+} & PropsCommon) {
   const update = <K extends keyof SecretForm>(key: K, value: SecretForm[K]) => setForm((current) => ({ ...current, [key]: value }));
   const [certificateSource, setCertificateSource] = useState<SecretInputSource>("upload");
   const [privateKeySource, setPrivateKeySource] = useState<SecretInputSource>("upload");
@@ -2291,6 +2298,11 @@ export function SecretBuilderPanel({
     setManifestText(YAML.stringify(buildSecretManifest(form)));
     setNotice(`Secret builder updated ${form.name}.`);
   };
+  const availableSecretTypeOptions =
+    secretTypeChoices ??
+    (secretTypeOptions.some((option) => option.value === form.secretType)
+      ? secretTypeOptions
+      : [{ value: form.secretType, label: secretTypeLabel(form.secretType) }, ...secretTypeOptions]);
 
   return (
     <div className="builder-panel">
@@ -2307,7 +2319,7 @@ export function SecretBuilderPanel({
         <div className="builder-grid">
           <TextField label="Secret name" description="The Kubernetes name of this secret." value={form.name} onChange={(value) => update("name", value)} placeholder="tls-secret-name" required />
           <NamespaceField value={form.namespace} onChange={(value) => update("namespace", value)} clusterOptions={clusterOptions} />
-          <SelectField label="Secret type" description="Secret type expected by NGINX Ingress Controller policies." value={form.secretType} onChange={(value) => update("secretType", value as SecretType)} options={secretTypeOptions} required />
+          <SelectField label="Secret type" description="Secret type expected by NGINX Ingress Controller policies." value={form.secretType} onChange={(value) => update("secretType", value as SecretType)} options={availableSecretTypeOptions} required />
         </div>
       </Section>
 

@@ -156,13 +156,29 @@ function simplifyResourceList(items: AnyRecord[]) {
     labels: item.metadata?.labels ?? {},
     state: item.status?.state ?? item.status?.phase ?? null,
     summary:
-      (item.kind === "Secret" ? item.type : null) ??
+      (item.kind === "Secret" ? ingressPolicySecretTypeLabel(item.type) : null) ??
       item.spec?.host ??
       item.spec?.listener?.name ??
       item.spec?.listeners?.[0]?.name ??
       item.data?.["proxy-read-timeout"] ??
       null,
   }));
+}
+
+const ingressPolicySecretTypeLabels: Record<string, string> = {
+  "nginx.org/apikey": "API key secret",
+  "nginx.org/htpasswd": "HTTP password secret",
+  "nginx.org/ca": "CA cert secret",
+  "nginx.org/oidc": "OIDC secret",
+  "nginx.org/jwk": "JWK secret",
+};
+
+function isIngressPolicySecret(secret: AnyRecord) {
+  return typeof secret?.type === "string" && Object.prototype.hasOwnProperty.call(ingressPolicySecretTypeLabels, secret.type);
+}
+
+function ingressPolicySecretTypeLabel(type: unknown) {
+  return typeof type === "string" ? ingressPolicySecretTypeLabels[type] ?? type : null;
 }
 
 function isTlsSecret(secret: AnyRecord) {
@@ -358,7 +374,7 @@ app.get("/api/overview", async (req, res) => {
       const labels = JSON.stringify(item.metadata?.labels ?? {}).toLowerCase();
       return name.includes("nginx") || labels.includes("nginx-ingress");
     });
-    const secretItems = (secrets.items ?? []) as AnyRecord[];
+    const secretItems = ((secrets.items ?? []) as AnyRecord[]).filter(isIngressPolicySecret);
 
     const [virtualServers, virtualServerRoutes, transportServers, policies, globalConfigurations] =
       await Promise.all([

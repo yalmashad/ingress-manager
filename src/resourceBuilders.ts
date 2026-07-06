@@ -355,12 +355,11 @@ export const corsMethodOptions = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE
 export const cacheMethodOptions = ["GET", "HEAD", "POST"];
 export const rateKeyExamples = ["${binary_remote_addr}", "${request_uri}", "${request_method}", "${cookie_session}"];
 export const secretTypeOptions: Array<{ value: SecretType; label: string }> = [
-  { value: "kubernetes.io/tls", label: "TLS certificate" },
-  { value: "nginx.org/apikey", label: "API key" },
-  { value: "nginx.org/htpasswd", label: "Basic auth htpasswd" },
-  { value: "nginx.org/ca", label: "CA certificate" },
-  { value: "nginx.org/oidc", label: "OIDC client secret" },
-  { value: "nginx.org/jwk", label: "JWT JWK" },
+  { value: "nginx.org/apikey", label: "API key secret" },
+  { value: "nginx.org/htpasswd", label: "HTTP password secret" },
+  { value: "nginx.org/ca", label: "CA cert secret" },
+  { value: "nginx.org/oidc", label: "OIDC secret" },
+  { value: "nginx.org/jwk", label: "JWK secret" },
 ];
 
 function decodeBase64(value: string) {
@@ -1321,9 +1320,9 @@ export function defaultVirtualServerForm(): VirtualServerForm {
 
 export function defaultSecretForm(): SecretForm {
   return {
-    name: "tls-secret-name",
+    name: "api-key-secret-name",
     namespace: "default",
-    secretType: "kubernetes.io/tls",
+    secretType: "nginx.org/apikey",
     certificate: "-----BEGIN CERTIFICATE-----\nPASTE_CERT_HERE\n-----END CERTIFICATE-----",
     privateKey: "-----BEGIN PRIVATE KEY-----\nPASTE_KEY_HERE\n-----END PRIVATE KEY-----",
     apiKeyName: "client-name",

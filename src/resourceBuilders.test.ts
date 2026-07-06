@@ -11,7 +11,8 @@ import {
 describe("policy manifest builder", () => {
   it("uses neutral default names for policies and secrets", () => {
     expect(defaultPolicyForm("rateLimit").name).toBe("policy-name");
-    expect(defaultSecretForm().name).toBe("tls-secret-name");
+    expect(defaultSecretForm().name).toBe("api-key-secret-name");
+    expect(defaultSecretForm().secretType).toBe("nginx.org/apikey");
   });
 
   it("builds typed NGINX secrets used by policies", () => {
