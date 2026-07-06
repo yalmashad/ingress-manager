@@ -11,7 +11,9 @@ import {
   corsMethodOptions,
   defaultGlobalConfigurationListenerForm,
   defaultPolicyForm,
+  defaultRouteMatchForm,
   defaultRouteForm,
+  defaultRouteSplitForm,
   defaultSecretForm,
   defaultTransportServerUpstreamForm,
   defaultUpstreamForm,
@@ -33,6 +35,8 @@ import {
   type PolicyType,
   type RateLimitConditionType,
   type RouteForm,
+  type RouteMatchForm,
+  type RouteSplitForm,
   type RouteActionType,
   type SecretForm,
   type SecretType,
@@ -323,11 +327,13 @@ function BooleanSelectField({
 function InlineSettingRow({
   label,
   description,
+  required = false,
   children,
   multiline = false,
 }: {
   label: string;
   description: string;
+  required?: boolean;
   children: ReactNode;
   multiline?: boolean;
 }) {
@@ -335,6 +341,7 @@ function InlineSettingRow({
     <div className={`settings-table-row ${multiline ? "multiline" : ""}`}>
       <span className="settings-table-label">
         {label}
+        {required ? <span className="required-indicator">Required</span> : null}
         <button type="button" className="help-tip" title={description} aria-label={`${label}: ${description}`}>
           ?
         </button>
@@ -689,6 +696,82 @@ function SettingsSecretSelect({
   );
 }
 
+function PolicyTransferField({
+  label,
+  description,
+  value,
+  onChange,
+  clusterOptions,
+  onCreateResource,
+}: {
+  label: string;
+  description: string;
+  value: string;
+  onChange: (value: string) => void;
+  clusterOptions: ClusterOptions;
+  onCreateResource: (kind: string, options?: { namespace?: string; onCreated?: (value: string) => void }) => void;
+}) {
+  const selected = splitLines(value);
+  const selectedSet = new Set(selected);
+  const available = clusterOptions.policies
+    .map((item) => (item.namespace ? `${item.namespace}/${item.name}` : item.name))
+    .filter((item) => !selectedSet.has(item));
+  const [availableChoice, setAvailableChoice] = useState("");
+  const [selectedChoice, setSelectedChoice] = useState("");
+  const addChoice = (choice: string) => {
+    if (!choice) return;
+    onChange(joinLines([...selected, choice]));
+    setAvailableChoice("");
+  };
+  const removeChoice = (choice: string) => {
+    if (!choice) return;
+    onChange(joinLines(selected.filter((item) => item !== choice)));
+    setSelectedChoice("");
+  };
+
+  return (
+    <SettingsRow label={label} description={description}>
+      <div className="transfer-list">
+        <div className="transfer-pane">
+          <span className="transfer-title">Available</span>
+          <select size={Math.max(4, Math.min(8, available.length || 4))} value={availableChoice} onChange={(event) => setAvailableChoice(event.target.value)}>
+            {available.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="transfer-actions">
+          <button type="button" className="slim-button" onClick={() => addChoice(availableChoice)} disabled={!availableChoice}>
+            Add
+          </button>
+          <button type="button" className="slim-button" onClick={() => removeChoice(selectedChoice)} disabled={!selectedChoice}>
+            Remove
+          </button>
+          <button
+            type="button"
+            className="slim-button"
+            onClick={() => onCreateResource("Policy", { onCreated: (created) => onChange(joinLines([...selected, created])) })}
+          >
+            Create Policy
+          </button>
+        </div>
+        <div className="transfer-pane">
+          <span className="transfer-title">Selected</span>
+          <select size={Math.max(4, Math.min(8, selected.length || 4))} value={selectedChoice} onChange={(event) => setSelectedChoice(event.target.value)}>
+            {selected.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+    </SettingsRow>
+  );
+}
+
 type SecretInputSource = "upload" | "paste";
 
 function SecretSourceField({
@@ -928,6 +1011,65 @@ function resetRouteForAction(route: RouteForm, actionType: RouteActionType): Rou
   };
 }
 
+function RouteActionRows({
+  actionType,
+  onActionTypeChange,
+  pass,
+  proxyUpstream,
+  rewritePath,
+  redirectUrl,
+  redirectCode,
+  returnCode,
+  returnType,
+  returnBody,
+  onChange,
+  actionOptions = routeActionOptions,
+  prefix = "",
+}: {
+  actionType: RouteActionType;
+  onActionTypeChange: (value: RouteActionType) => void;
+  pass: string;
+  proxyUpstream: string;
+  rewritePath: string;
+  redirectUrl: string;
+  redirectCode: string;
+  returnCode: string;
+  returnType: string;
+  returnBody: string;
+  onChange: (next: Partial<Record<"pass" | "proxyUpstream" | "rewritePath" | "redirectUrl" | "redirectCode" | "returnCode" | "returnType" | "returnBody", string>>) => void;
+  actionOptions?: Option[];
+  prefix?: string;
+}) {
+  const labelPrefix = prefix ? `${prefix} ` : "";
+  return (
+    <>
+      <SettingsSelectField label={`${labelPrefix}Action type`} description="Choose how matching requests should be handled." value={actionType} onChange={(value) => onActionTypeChange(value as RouteActionType)} options={actionOptions} required />
+      {actionType === "pass" ? (
+        <SettingsTextField label={`${labelPrefix}Pass upstream`} description="Upstream that receives matching requests." value={pass} onChange={(value) => onChange({ pass: value })} placeholder="example: tea" required />
+      ) : null}
+      {actionType === "proxy" ? (
+        <>
+          <SettingsTextField label={`${labelPrefix}Proxy upstream`} description="Upstream that receives proxied requests." value={proxyUpstream} onChange={(value) => onChange({ proxyUpstream: value })} placeholder="example: tea" required />
+          <SettingsTextField label={`${labelPrefix}Rewrite path`} description="Optional rewritten URI sent to the upstream." value={rewritePath} onChange={(value) => onChange({ rewritePath: value })} placeholder="example: /somepath" />
+        </>
+      ) : null}
+      {actionType === "redirect" ? (
+        <>
+          <SettingsTextField label={`${labelPrefix}Redirect URL`} description="Destination URL returned in the redirect response." value={redirectUrl} onChange={(value) => onChange({ redirectUrl: value })} placeholder="example: https://www.nginx.com" required />
+          <SettingsSelectField label={`${labelPrefix}Redirect code`} description="HTTP status code used for redirects." value={redirectCode} onChange={(value) => onChange({ redirectCode: value })} options={tlsRedirectCodeOptions} />
+        </>
+      ) : null}
+      {actionType === "return" ? (
+        <>
+          <SettingsTextField label={`${labelPrefix}Return code`} description="HTTP status code returned directly by NGINX." value={returnCode} onChange={(value) => onChange({ returnCode: value })} placeholder="example: 200" />
+          <SettingsTextField label={`${labelPrefix}Return type`} description="MIME type of the custom response body." value={returnType} onChange={(value) => onChange({ returnType: value })} placeholder="example: text/plain" />
+          <SettingsTextAreaField label={`${labelPrefix}Return body`} description="Literal response body returned by NGINX." value={returnBody} onChange={(value) => onChange({ returnBody: value })} placeholder={"example: Hello World\\n"} />
+        </>
+      ) : null}
+    </>
+  );
+}
+
 type HttpHealthCheckForm = {
   enable: boolean;
   path: string;
@@ -1091,10 +1233,12 @@ function UpstreamEditor({
   upstream,
   onChange,
   onRemove,
+  showAdvanced = true,
 }: {
   upstream: UpstreamForm;
   onChange: (next: UpstreamForm) => void;
   onRemove?: () => void;
+  showAdvanced?: boolean;
 }) {
   const healthCheck = useMemo(() => parseHttpHealthCheck(upstream.healthCheckYaml), [upstream.healthCheckYaml]);
   const updateHealthCheck = (next: Partial<HttpHealthCheckForm>) =>
@@ -1119,7 +1263,7 @@ function UpstreamEditor({
           <SettingsTextField label="Port" description="Service port exposed by the upstream." value={upstream.port} onChange={(value) => onChange({ ...upstream, port: value })} placeholder="80" required />
           <SettingsSelectField label="Type" description="Protocol used between NGINX and the upstream service." value={upstream.type} onChange={(value) => onChange({ ...upstream, type: value })} options={["http", "grpc"]} />
           <SettingsBooleanField label="TLS to upstream" description="Send traffic to this upstream over TLS." value={upstream.tlsEnable} onChange={(value) => onChange({ ...upstream, tlsEnable: value })} />
-          <SettingsBooleanField label="Use cluster IP" description="Send traffic to the Service ClusterIP instead of individual pod endpoints." value={upstream.useClusterIp} onChange={(value) => onChange({ ...upstream, useClusterIp: value })} />
+          {showAdvanced ? <SettingsBooleanField label="Use cluster IP" description="Send traffic to the Service ClusterIP instead of individual pod endpoints." value={upstream.useClusterIp} onChange={(value) => onChange({ ...upstream, useClusterIp: value })} /> : null}
         </div>
       </Section>
 
@@ -1134,31 +1278,39 @@ function UpstreamEditor({
               ))}
             </select>
           </InlineSettingRow>
-          <InlineSettingRow label="Next upstream" description="Failure conditions that should retry another endpoint.">
-            <input value={upstream.nextUpstream} onChange={(event) => onChange({ ...upstream, nextUpstream: event.target.value })} placeholder="example: error timeout invalid_header" />
-          </InlineSettingRow>
-          <InlineSettingRow label="Next upstream timeout" description="Total retry window across endpoints. Default: 0.">
-            <input value={upstream.nextUpstreamTimeout} onChange={(event) => onChange({ ...upstream, nextUpstreamTimeout: event.target.value })} placeholder="default: 0" />
-          </InlineSettingRow>
-          <InlineSettingRow label="Next upstream tries" description="Maximum number of retry attempts. Default: 0.">
-            <input value={upstream.nextUpstreamTries} onChange={(event) => onChange({ ...upstream, nextUpstreamTries: event.target.value })} placeholder="default: 0" />
-          </InlineSettingRow>
+          {showAdvanced ? (
+            <>
+              <InlineSettingRow label="Next upstream" description="Failure conditions that should retry another endpoint.">
+                <input value={upstream.nextUpstream} onChange={(event) => onChange({ ...upstream, nextUpstream: event.target.value })} placeholder="example: error timeout invalid_header" />
+              </InlineSettingRow>
+              <InlineSettingRow label="Next upstream timeout" description="Total retry window across endpoints. Default: 0.">
+                <input value={upstream.nextUpstreamTimeout} onChange={(event) => onChange({ ...upstream, nextUpstreamTimeout: event.target.value })} placeholder="default: 0" />
+              </InlineSettingRow>
+              <InlineSettingRow label="Next upstream tries" description="Maximum number of retry attempts. Default: 0.">
+                <input value={upstream.nextUpstreamTries} onChange={(event) => onChange({ ...upstream, nextUpstreamTries: event.target.value })} placeholder="default: 0" />
+              </InlineSettingRow>
+            </>
+          ) : null}
           <InlineSettingRow label="Max conns" description="Maximum active connections per backend endpoint. Default: unlimited.">
             <input value={upstream.maxConns} onChange={(event) => onChange({ ...upstream, maxConns: event.target.value })} placeholder="default: unlimited" />
           </InlineSettingRow>
-          <InlineSettingRow label="Max fails" description="Failures before an endpoint is marked unavailable. Default: 1.">
-            <input value={upstream.maxFails} onChange={(event) => onChange({ ...upstream, maxFails: event.target.value })} placeholder="default: 1" />
-          </InlineSettingRow>
-          <InlineSettingRow label="Fail timeout" description="Window used together with max fails. Default: 10s.">
-            <input value={upstream.failTimeout} onChange={(event) => onChange({ ...upstream, failTimeout: event.target.value })} placeholder="default: 10s" />
-          </InlineSettingRow>
+          {showAdvanced ? (
+            <>
+              <InlineSettingRow label="Max fails" description="Failures before an endpoint is marked unavailable. Default: 1.">
+                <input value={upstream.maxFails} onChange={(event) => onChange({ ...upstream, maxFails: event.target.value })} placeholder="default: 1" />
+              </InlineSettingRow>
+              <InlineSettingRow label="Fail timeout" description="Window used together with max fails. Default: 10s.">
+                <input value={upstream.failTimeout} onChange={(event) => onChange({ ...upstream, failTimeout: event.target.value })} placeholder="default: 10s" />
+              </InlineSettingRow>
+            </>
+          ) : null}
           <InlineSettingRow label="Slow start" description="Ramp-up period after an endpoint becomes healthy again. Default: disabled.">
             <input value={upstream.slowStart} onChange={(event) => onChange({ ...upstream, slowStart: event.target.value })} placeholder="default: disabled" />
           </InlineSettingRow>
         </div>
       </Section>
 
-      <Section title="Timeouts and Buffers" description="HTTP connection and buffering behavior">
+      {showAdvanced ? <Section title="Timeouts and Buffers" description="HTTP connection and buffering behavior">
         <div className="settings-table">
           <InlineSettingRow label="Connect timeout" description="Time allowed to establish a backend connection. Default: from ConfigMap.">
             <input value={upstream.connectTimeout} onChange={(event) => onChange({ ...upstream, connectTimeout: event.target.value })} placeholder="default: from ConfigMap" />
@@ -1188,7 +1340,7 @@ function UpstreamEditor({
             <input value={upstream.queueTimeout} onChange={(event) => onChange({ ...upstream, queueTimeout: event.target.value })} placeholder="default: 60s" />
           </InlineSettingRow>
         </div>
-      </Section>
+      </Section> : null}
 
       <Section title="Health Check" description="NGINX Plus active health checks for this upstream">
         <div className="settings-table">
@@ -1205,33 +1357,25 @@ function UpstreamEditor({
               <InlineSettingRow label="Interval" description="Interval between health checks. Default: 5s.">
                 <input value={healthCheck.interval} onChange={(event) => updateHealthCheck({ interval: event.target.value })} placeholder="default: 5s" />
               </InlineSettingRow>
-              <InlineSettingRow label="Jitter" description="Random delay applied to each health check. Default: no delay.">
-                <input value={healthCheck.jitter} onChange={(event) => updateHealthCheck({ jitter: event.target.value })} placeholder="default: no delay" />
-              </InlineSettingRow>
               <InlineSettingRow label="Fails" description="Consecutive failed checks before marking unhealthy. Default: 1.">
                 <input value={healthCheck.fails} onChange={(event) => updateHealthCheck({ fails: event.target.value })} placeholder="default: 1" />
               </InlineSettingRow>
               <InlineSettingRow label="Passes" description="Consecutive successful checks before marking healthy. Default: 1.">
                 <input value={healthCheck.passes} onChange={(event) => updateHealthCheck({ passes: event.target.value })} placeholder="default: 1" />
               </InlineSettingRow>
-              <InlineSettingRow label="Port" description="Pod port used for health checks. Default: upstream server port.">
-                <input value={healthCheck.port} onChange={(event) => updateHealthCheck({ port: event.target.value })} placeholder="default: upstream pod port" />
-              </InlineSettingRow>
-              <InlineSettingRow label="Health-check TLS" description="Use TLS for health check requests. Default: use the upstream TLS setting.">
-                <input type="checkbox" checked={healthCheck.tlsEnable} onChange={(event) => updateHealthCheck({ tlsEnable: event.target.checked })} />
-              </InlineSettingRow>
-              <InlineSettingRow label="Connect timeout" description="Connection timeout for the health check. Default: use upstream connect-timeout.">
-                <input value={healthCheck.connectTimeout} onChange={(event) => updateHealthCheck({ connectTimeout: event.target.value })} placeholder="default: upstream connect-timeout" />
-              </InlineSettingRow>
-              <InlineSettingRow label="Read timeout" description="Read timeout for the health check. Default: use upstream read-timeout.">
-                <input value={healthCheck.readTimeout} onChange={(event) => updateHealthCheck({ readTimeout: event.target.value })} placeholder="default: upstream read-timeout" />
-              </InlineSettingRow>
-              <InlineSettingRow label="Send timeout" description="Send timeout for the health check. Default: use upstream send-timeout.">
-                <input value={healthCheck.sendTimeout} onChange={(event) => updateHealthCheck({ sendTimeout: event.target.value })} placeholder="default: upstream send-timeout" />
-              </InlineSettingRow>
-              <InlineSettingRow label="Headers" description="Headers sent with health check requests. NGINX Plus always sets Host, User-Agent, and Connection." multiline>
-                <textarea rows={4} value={healthCheck.headersText} onChange={(event) => updateHealthCheck({ headersText: event.target.value })} placeholder="example: Host=my.service" />
-              </InlineSettingRow>
+              {showAdvanced ? (
+                <>
+                  <InlineSettingRow label="Port" description="Pod port used for health checks. Default: upstream server port.">
+                    <input value={healthCheck.port} onChange={(event) => updateHealthCheck({ port: event.target.value })} placeholder="default: upstream pod port" />
+                  </InlineSettingRow>
+                  <InlineSettingRow label="Health-check TLS" description="Use TLS for health check requests. Default: use the upstream TLS setting.">
+                    <input type="checkbox" checked={healthCheck.tlsEnable} onChange={(event) => updateHealthCheck({ tlsEnable: event.target.checked })} />
+                  </InlineSettingRow>
+                  <InlineSettingRow label="Headers" description="Headers sent with health check requests. NGINX Plus always sets Host, User-Agent, and Connection." multiline>
+                    <textarea rows={4} value={healthCheck.headersText} onChange={(event) => updateHealthCheck({ headersText: event.target.value })} placeholder="example: Host=my.service" />
+                  </InlineSettingRow>
+                </>
+              ) : null}
               {!isGrpcUpstream ? (
                 <InlineSettingRow label="Status match" description="Expected HTTP response status. Default: 2xx or 3xx.">
                   <input value={healthCheck.statusMatch} onChange={(event) => updateHealthCheck({ statusMatch: event.target.value })} placeholder="example: ! 500" />
@@ -1249,12 +1393,11 @@ function UpstreamEditor({
               <InlineSettingRow label="Mandatory" description="Require new servers to pass health checks before receiving traffic. Default: false.">
                 <input type="checkbox" checked={healthCheck.mandatory} onChange={(event) => updateHealthCheck({ mandatory: event.target.checked })} />
               </InlineSettingRow>
-              <InlineSettingRow label="Persistent" description="Preserve healthy state across reloads. Default: false. Requires Mandatory.">
-                <input type="checkbox" checked={healthCheck.persistent} onChange={(event) => updateHealthCheck({ persistent: event.target.checked })} />
-              </InlineSettingRow>
-              <InlineSettingRow label="Keepalive time" description="Keepalive time for health check connections. Default: 60s.">
-                <input value={healthCheck.keepaliveTime} onChange={(event) => updateHealthCheck({ keepaliveTime: event.target.value })} placeholder="default: 60s" />
-              </InlineSettingRow>
+              {showAdvanced ? (
+                <InlineSettingRow label="Persistent" description="Preserve healthy state across reloads. Default: false. Requires Mandatory.">
+                  <input type="checkbox" checked={healthCheck.persistent} onChange={(event) => updateHealthCheck({ persistent: event.target.checked })} />
+                </InlineSettingRow>
+              ) : null}
             </>
           ) : null}
         </div>
@@ -1262,33 +1405,34 @@ function UpstreamEditor({
 
       <Section title="Session Persistence" description="Session persistence and endpoint selection">
         <div className="settings-table">
-          <InlineSettingRow label="Subselector labels" description="Pod labels used to narrow which endpoints join this upstream." multiline>
-            <textarea rows={4} value={upstream.subselectorText} onChange={(event) => onChange({ ...upstream, subselectorText: event.target.value })} placeholder={"example: app=tea\ntrack=stable"} />
-          </InlineSettingRow>
-          <InlineSettingRow label="Sticky session cookie" description="Enable sticky sessions using an NGINX-generated cookie.">
+          <InlineSettingRow label="Sticky session cookie" description="Enable sticky sessions using an NGINX-generated cookie." required>
             <input type="checkbox" checked={upstream.sessionCookieEnable} onChange={(event) => onChange({ ...upstream, sessionCookieEnable: event.target.checked })} />
           </InlineSettingRow>
-          <InlineSettingRow label="Cookie name" description="Name of the sticky-session cookie.">
+          <InlineSettingRow label="Cookie name" description="Name of the sticky-session cookie." required>
             <input value={upstream.sessionCookieName} onChange={(event) => onChange({ ...upstream, sessionCookieName: event.target.value })} placeholder="example: route" />
-          </InlineSettingRow>
-          <InlineSettingRow label="Cookie path" description="Path attribute for the sticky-session cookie.">
-            <input value={upstream.sessionCookiePath} onChange={(event) => onChange({ ...upstream, sessionCookiePath: event.target.value })} placeholder="example: /" />
           </InlineSettingRow>
           <InlineSettingRow label="Cookie domain" description="Domain attribute for the sticky-session cookie.">
             <input value={upstream.sessionCookieDomain} onChange={(event) => onChange({ ...upstream, sessionCookieDomain: event.target.value })} placeholder="example: app.example.com" />
           </InlineSettingRow>
-          <InlineSettingRow label="Cookie expires" description="Expiration or max-age setting for the sticky-session cookie. Default: session cookie.">
-            <input value={upstream.sessionCookieExpires} onChange={(event) => onChange({ ...upstream, sessionCookieExpires: event.target.value })} placeholder="default: session cookie" />
-          </InlineSettingRow>
-          <InlineSettingRow label="SameSite" description="SameSite attribute for the sticky-session cookie.">
-            <select value={upstream.sessionCookieSameSite} onChange={(event) => onChange({ ...upstream, sessionCookieSameSite: event.target.value })}>
-              {[{ value: "", label: "None" }, ...sameSiteOptions.map((option) => ({ value: option, label: option }))].map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </InlineSettingRow>
+          {showAdvanced ? (
+            <>
+              <InlineSettingRow label="Cookie path" description="Path attribute for the sticky-session cookie.">
+                <input value={upstream.sessionCookiePath} onChange={(event) => onChange({ ...upstream, sessionCookiePath: event.target.value })} placeholder="example: /" />
+              </InlineSettingRow>
+              <InlineSettingRow label="Cookie expires" description="Expiration or max-age setting for the sticky-session cookie. Default: session cookie.">
+                <input value={upstream.sessionCookieExpires} onChange={(event) => onChange({ ...upstream, sessionCookieExpires: event.target.value })} placeholder="default: session cookie" />
+              </InlineSettingRow>
+              <InlineSettingRow label="SameSite" description="SameSite attribute for the sticky-session cookie.">
+                <select value={upstream.sessionCookieSameSite} onChange={(event) => onChange({ ...upstream, sessionCookieSameSite: event.target.value })}>
+                  {[{ value: "", label: "None" }, ...sameSiteOptions.map((option) => ({ value: option, label: option }))].map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </InlineSettingRow>
+            </>
+          ) : null}
           <InlineSettingRow label="Cookie secure" description="Mark the sticky-session cookie as Secure.">
             <input type="checkbox" checked={upstream.sessionCookieSecure} onChange={(event) => onChange({ ...upstream, sessionCookieSecure: event.target.checked })} />
           </InlineSettingRow>
@@ -1308,6 +1452,7 @@ function RouteEditor({
   onRemove,
   clusterOptions,
   onCreateResource,
+  showAdvanced,
   showLocationSnippets = true,
 }: {
   route: RouteForm;
@@ -1316,8 +1461,12 @@ function RouteEditor({
   onRemove?: () => void;
   clusterOptions: ClusterOptions;
   onCreateResource: (kind: string, options?: { namespace?: string; onCreated?: (value: string) => void }) => void;
+  showAdvanced: boolean;
   showLocationSnippets?: boolean;
 }) {
+  const updateMatch = (index: number, next: RouteMatchForm) => onChange({ ...route, matches: updateAtIndex(route.matches, index, next) });
+  const updateSplit = (index: number, next: RouteSplitForm) => onChange({ ...route, splits: updateAtIndex(route.splits, index, next) });
+
   return (
     <div className="nested-card">
       <div className="panel-heading compact">
@@ -1332,97 +1481,108 @@ function RouteEditor({
       <Section title="Route" description="Path matching and the action applied to matching requests" defaultOpen>
         <div className="settings-table">
           <SettingsTextField label="Path" description="Route path, exact match, or regex pattern." value={route.path} onChange={(value) => onChange({ ...route, path: value })} placeholder="example: /tea or ~ ^/v[0-9]+/" required />
-          <SettingsSelectField label="Action type" description="Choose how requests matching this route should be handled." value={route.actionType} onChange={(value) => onChange(resetRouteForAction(route, value as RouteActionType))} options={routeActionOptions} required />
-          {route.actionType === "pass" ? (
-            <SettingsTextField label="Pass upstream" description="Upstream that receives matching requests." value={route.pass} onChange={(value) => onChange({ ...route, pass: value })} placeholder="example: tea" required />
-          ) : null}
-          {route.actionType === "proxy" ? (
-            <>
-              <SettingsTextField label="Proxy upstream" description="Upstream that receives proxied requests." value={route.proxyUpstream} onChange={(value) => onChange({ ...route, proxyUpstream: value })} placeholder="example: api" required />
-              <SettingsTextField label="Rewrite path" description="Optional rewritten URI sent to the upstream." value={route.rewritePath} onChange={(value) => onChange({ ...route, rewritePath: value })} placeholder="example: /v1/$1" />
-            </>
-          ) : null}
-          {route.actionType === "redirect" ? (
-            <>
-              <SettingsTextField label="Redirect URL" description="Destination URL returned in the redirect response." value={route.redirectUrl} onChange={(value) => onChange({ ...route, redirectUrl: value })} placeholder="example: https://www.example.com$request_uri" />
-              <SettingsSelectField label="Redirect code" description="HTTP status code used for redirects." value={route.redirectCode} onChange={(value) => onChange({ ...route, redirectCode: value })} options={tlsRedirectCodeOptions} />
-            </>
-          ) : null}
-          {route.actionType === "return" ? (
-            <>
-              <SettingsTextField label="Return code" description="HTTP status code returned directly by NGINX." value={route.returnCode} onChange={(value) => onChange({ ...route, returnCode: value })} placeholder="example: 200" />
-              <SettingsTextField label="Return type" description="MIME type of the custom response body." value={route.returnType} onChange={(value) => onChange({ ...route, returnType: value })} placeholder="example: application/json" />
-              <SettingsTextAreaField label="Return body" description="Literal response body returned by NGINX." value={route.returnBody} onChange={(value) => onChange({ ...route, returnBody: value })} placeholder='example: {"message":"ok"}' />
-            </>
-          ) : null}
-          <SettingsSelectField
-            label="DOS resource"
-            description="Reference an App Protect DoS resource for this route."
-            value={route.dos}
-            onChange={(value) => {
-              if (value === createDosValue) {
-                onCreateResource("DosProtectedResource", { onCreated: (created) => onChange({ ...route, dos: created }) });
-                return;
-              }
-              onChange({ ...route, dos: value });
-            }}
-            options={resourceOptions(clusterOptions.dosResources, createDosValue, "Create new DOS resource...")}
+          <RouteActionRows
+            actionType={route.actionType}
+            onActionTypeChange={(value) => onChange(resetRouteForAction(route, value))}
+            pass={route.pass}
+            proxyUpstream={route.proxyUpstream}
+            rewritePath={route.rewritePath}
+            redirectUrl={route.redirectUrl}
+            redirectCode={route.redirectCode}
+            returnCode={route.returnCode}
+            returnType={route.returnType}
+            returnBody={route.returnBody}
+            onChange={(next) => onChange({ ...route, ...next })}
           />
-          <SettingsSelectField
-            label="Route policy refs"
-            description="Attach a Policy resource to this route."
+          <PolicyTransferField
+            label="Policies"
+            description="Attach one or more Policy resources to this route."
             value={route.policyRefsText}
-            onChange={(value) => {
-              if (value === createPolicyValue) {
-                onCreateResource("Policy", { onCreated: (created) => onChange({ ...route, policyRefsText: created }) });
-                return;
-              }
-              onChange({ ...route, policyRefsText: value });
-            }}
-            options={resourceOptions(clusterOptions.policies, createPolicyValue, "Create new Policy...")}
+            onChange={(value) => onChange({ ...route, policyRefsText: value })}
+            clusterOptions={clusterOptions}
+            onCreateResource={onCreateResource}
           />
-          <SettingsTextAreaField label="Route selector" description="Advanced selector used when automatically including VirtualServerRoutes." value={route.routeSelectorText} onChange={(value) => onChange({ ...route, routeSelectorText: value })} placeholder={"example:\nmatchLabels:\n  app: cafe"} rows={5} />
-        </div>
-      </Section>
-
-      <Section title="Matches" description="Optional content-based header match rule">
-        <div className="settings-table">
-          <SettingsSelectField label="Condition type" description="Condition source used by this match rule." value={route.matchConditionType} onChange={(value) => onChange({ ...route, matchConditionType: value as RouteForm["matchConditionType"] })} options={["header", "cookie", "argument", "variable"]} />
-          <SettingsTextField label="Condition name" description="Header, cookie, argument, or variable name used by the match condition." value={route.matchConditionName} onChange={(value) => onChange({ ...route, matchConditionName: value })} placeholder={route.matchConditionType === "variable" ? "example: $request_method" : "example: user"} />
-          <SettingsTextField label="Condition value" description="Value to compare against, including exact or regex-based matches." value={route.matchValue} onChange={(value) => onChange({ ...route, matchValue: value })} placeholder="example: john or ~*^mobile" />
-          <SettingsSelectField label="Match action" description="Action used when this match rule succeeds." value={route.matchActionType} onChange={(value) => onChange({ ...route, matchActionType: value as RouteForm["matchActionType"] })} options={routeActionOptions} />
-          {route.matchActionType === "pass" ? (
-            <SettingsTextField label="Match pass upstream" description="Upstream used when the match succeeds." value={route.matchActionPass} onChange={(value) => onChange({ ...route, matchActionPass: value })} placeholder="example: mobile-app" />
-          ) : null}
-          {route.matchActionType === "proxy" ? (
-            <>
-              <SettingsTextField label="Match proxy upstream" description="Upstream used for a proxy action when the match succeeds." value={route.matchProxyUpstream} onChange={(value) => onChange({ ...route, matchProxyUpstream: value })} placeholder="example: mobile-app" />
-              <SettingsTextField label="Match rewrite path" description="Optional rewritten URI sent upstream for the match action." value={route.matchRewritePath} onChange={(value) => onChange({ ...route, matchRewritePath: value })} placeholder="example: /m/$1" />
-            </>
-          ) : null}
-          {route.matchActionType === "redirect" ? (
-            <>
-              <SettingsTextField label="Match redirect URL" description="Redirect destination used when the match succeeds." value={route.matchRedirectUrl} onChange={(value) => onChange({ ...route, matchRedirectUrl: value })} placeholder="example: https://m.example.com$request_uri" />
-              <SettingsSelectField label="Match redirect code" description="Redirect status code used for the match action." value={route.matchRedirectCode} onChange={(value) => onChange({ ...route, matchRedirectCode: value })} options={tlsRedirectCodeOptions} />
-            </>
-          ) : null}
-          {route.matchActionType === "return" ? (
-            <>
-              <SettingsTextField label="Match return code" description="HTTP status returned when the match succeeds." value={route.matchReturnCode} onChange={(value) => onChange({ ...route, matchReturnCode: value })} placeholder="example: 200" />
-              <SettingsTextField label="Match return type" description="MIME type of the returned body." value={route.matchReturnType} onChange={(value) => onChange({ ...route, matchReturnType: value })} placeholder="example: application/json" />
-              <SettingsTextAreaField label="Match return body" description="Literal body returned when the match succeeds." value={route.matchReturnBody} onChange={(value) => onChange({ ...route, matchReturnBody: value })} placeholder='example: {"message":"ok"}' />
-            </>
+          {showAdvanced ? (
+            <SettingsTextAreaField label="Route selector" description="Advanced selector used when automatically including VirtualServerRoutes." value={route.routeSelectorText} onChange={(value) => onChange({ ...route, routeSelectorText: value })} placeholder={"example:\nmatchLabels:\n  app: cafe"} rows={5} />
           ) : null}
         </div>
       </Section>
 
-      <Section title="Splits" description="Optional two-way traffic split between upstreams">
-        <div className="settings-table">
-          <SettingsTextField label="Primary weight" description="Traffic percentage or weight for the primary upstream." value={route.splitPrimaryWeight} onChange={(value) => onChange({ ...route, splitPrimaryWeight: value })} placeholder="example: 80" />
-          <SettingsTextField label="Primary upstream" description="Upstream name used for the primary share." value={route.splitPrimaryPass} onChange={(value) => onChange({ ...route, splitPrimaryPass: value })} placeholder="example: stable" />
-          <SettingsTextField label="Secondary weight" description="Traffic percentage or weight for the secondary upstream." value={route.splitSecondaryWeight} onChange={(value) => onChange({ ...route, splitSecondaryWeight: value })} placeholder="example: 20" />
-          <SettingsTextField label="Secondary upstream" description="Upstream name used for the secondary share." value={route.splitSecondaryPass} onChange={(value) => onChange({ ...route, splitSecondaryPass: value })} placeholder="example: canary" />
+      <Section title="Matches" description="Optional condition rows evaluated before the default route action">
+        <div className="panel-heading compact">
+          <h4>Conditional matches</h4>
+          <button type="button" className="secondary" onClick={() => onChange({ ...route, matches: [...route.matches, defaultRouteMatchForm()] })}>
+            Add match
+          </button>
         </div>
+        {route.matches.length ? null : <p className="empty-state">No conditional matches. Add a match to steer this same path by header, cookie, argument, or variable.</p>}
+        {route.matches.map((match, index) => (
+          <div className="nested-card" key={`match-${index}`}>
+            <div className="panel-heading compact">
+              <h4>{`Match ${index + 1}`}</h4>
+              <button type="button" className="danger" onClick={() => onChange({ ...route, matches: route.matches.filter((_, itemIndex) => itemIndex !== index) })}>
+                Remove
+              </button>
+            </div>
+            <div className="settings-table">
+              <SettingsSelectField label="Condition type" description="Condition source used by this match rule." value={match.conditionType} onChange={(value) => updateMatch(index, { ...match, conditionType: value as RouteMatchForm["conditionType"] })} options={["header", "cookie", "argument", "variable"]} required />
+              <SettingsTextField label="Condition name" description="Header, cookie, argument, or variable name." value={match.conditionName} onChange={(value) => updateMatch(index, { ...match, conditionName: value })} placeholder={match.conditionType === "variable" ? "example: $request_method" : "example: User-Agent"} required />
+              <SettingsTextField label="Condition value" description="Value to compare against, including exact or regex matches." value={match.conditionValue} onChange={(value) => updateMatch(index, { ...match, conditionValue: value })} placeholder="example: POST or ~^.*(Android|iPhone).*" required />
+              <RouteActionRows
+                prefix="Match"
+                actionType={match.actionType}
+                onActionTypeChange={(value) => updateMatch(index, { ...match, actionType: value })}
+                pass={match.pass}
+                proxyUpstream={match.proxyUpstream}
+                rewritePath={match.rewritePath}
+                redirectUrl={match.redirectUrl}
+                redirectCode={match.redirectCode}
+                returnCode={match.returnCode}
+                returnType={match.returnType}
+                returnBody={match.returnBody}
+                onChange={(next) => updateMatch(index, { ...match, ...next })}
+              />
+            </div>
+          </div>
+        ))}
+      </Section>
+
+      <Section title="Splits" description="Optional weighted actions for canary or percentage routing">
+        <div className="panel-heading compact">
+          <h4>Weighted splits</h4>
+          <button type="button" className="secondary" onClick={() => onChange({ ...route, splits: [...route.splits, defaultRouteSplitForm()] })}>
+            Add split
+          </button>
+        </div>
+        {route.splits.length ? null : <p className="empty-state">No splits. Add two or more splits to distribute this path across upstreams.</p>}
+        {route.splits.map((split, index) => (
+          <div className="nested-card" key={`split-${index}`}>
+            <div className="panel-heading compact">
+              <h4>{`Split ${index + 1}`}</h4>
+              <button type="button" className="danger" onClick={() => onChange({ ...route, splits: route.splits.filter((_, itemIndex) => itemIndex !== index) })}>
+                Remove
+              </button>
+            </div>
+            <div className="settings-table">
+              <SettingsTextField label="Weight" description="Traffic weight for this split action." value={split.weight} onChange={(value) => updateSplit(index, { ...split, weight: value })} placeholder="example: 90" required />
+              <RouteActionRows
+                prefix="Split"
+                actionType={split.actionType}
+                actionOptions={["pass", "proxy"]}
+                onActionTypeChange={(value) => updateSplit(index, { ...split, actionType: value })}
+                pass={split.pass}
+                proxyUpstream={split.proxyUpstream}
+                rewritePath={split.rewritePath}
+                redirectUrl=""
+                redirectCode=""
+                returnCode=""
+                returnType=""
+                returnBody=""
+                onChange={(next) => updateSplit(index, { ...split, ...next })}
+              />
+            </div>
+          </div>
+        ))}
       </Section>
 
       <Section title="Error Pages" description="Custom redirect or response for selected error codes">
@@ -1881,13 +2041,11 @@ export function VirtualServerBuilderPanel({
   const derivedCertManagerMode = form.certClusterIssuer.trim() ? "clusterIssuer" : "issuer";
   const [certManagerEnabled, setCertManagerEnabled] = useState(derivedCertManagerEnabled);
   const [certManagerMode, setCertManagerMode] = useState<"issuer" | "clusterIssuer">(derivedCertManagerMode);
+  const [showAdvancedFields, setShowAdvancedFields] = useState(false);
   const apply = () => {
     setManifestText(YAML.stringify(buildVirtualServerManifest(form)));
     setNotice(`VirtualServer builder updated ${form.name}.`);
   };
-  const sameNamespaceTlsSecrets = clusterOptions.tlsSecrets
-    .filter((item) => (item.namespace ?? form.namespace) === form.namespace)
-    .map((item) => ({ value: item.name, label: item.name }));
   const usesCertManager = certManagerEnabled;
 
   useEffect(() => {
@@ -1899,9 +2057,15 @@ export function VirtualServerBuilderPanel({
     <div className="builder-panel">
       <div className="panel-heading">
         <h3>VirtualServer builder</h3>
-        <button type="button" className="secondary" onClick={apply}>
-          Reflect in YAML
-        </button>
+        <div className="panel-actions">
+          <label className="checkbox settings-checkbox">
+            <input type="checkbox" checked={showAdvancedFields} onChange={(event) => setShowAdvancedFields(event.target.checked)} />
+            <span>Show Advanced Fields</span>
+          </label>
+          <button type="button" className="secondary" onClick={apply}>
+            Reflect in YAML
+          </button>
+        </div>
       </div>
 
       <Section title="General" description="Identity, namespace, host, policies, and ownership" defaultOpen>
@@ -1910,33 +2074,30 @@ export function VirtualServerBuilderPanel({
           <SettingsNamespaceField value={form.namespace} onChange={(value) => update("namespace", value)} clusterOptions={clusterOptions} />
           <SettingsTextField label="Host" description="Unique host name served by this VirtualServer." value={form.host} onChange={(value) => update("host", value)} placeholder="example: cafe.example.com" required />
           <SettingsIngressClassField value={form.ingressClassName} onChange={(value) => update("ingressClassName", value)} clusterOptions={clusterOptions} />
-          <SettingsSelectField
-            label="DOS resource"
-            description="Reference an App Protect DoS resource for this object."
-            value={form.dos}
-            onChange={(value) => {
-              if (value === createDosValue) {
-                onCreateResource("DosProtectedResource", { onCreated: (created) => update("dos", created) });
-                return;
-              }
-              update("dos", value);
-            }}
-            options={resourceOptions(clusterOptions.dosResources, createDosValue, "Create new DOS resource...")}
-          />
-          <SettingsSelectField
+          {showAdvancedFields ? (
+            <SettingsSelectField
+              label="DOS resource"
+              description="Reference an App Protect DoS resource for this object."
+              value={form.dos}
+              onChange={(value) => {
+                if (value === createDosValue) {
+                  onCreateResource("DosProtectedResource", { onCreated: (created) => update("dos", created) });
+                  return;
+                }
+                update("dos", value);
+              }}
+              options={resourceOptions(clusterOptions.dosResources, createDosValue, "Create new DOS resource...")}
+            />
+          ) : null}
+          <PolicyTransferField
             label="Policies"
-            description="Attach a Policy resource that NGINX should apply here."
+            description="Attach one or more Policy resources that NGINX should apply here."
             value={form.policyRefsText}
-            onChange={(value) => {
-              if (value === createPolicyValue) {
-                onCreateResource("Policy", { onCreated: (created) => update("policyRefsText", created) });
-                return;
-              }
-              update("policyRefsText", value);
-            }}
-            options={resourceOptions(clusterOptions.policies, createPolicyValue, "Create new Policy...")}
+            onChange={(value) => update("policyRefsText", value)}
+            clusterOptions={clusterOptions}
+            onCreateResource={onCreateResource}
           />
-          <SettingsBooleanField label="Internal route" description="Mark the VirtualServer as internal-only." value={form.internalRoute} onChange={(value) => update("internalRoute", value)} />
+          {showAdvancedFields ? <SettingsBooleanField label="Internal route" description="Mark the VirtualServer as internal-only." value={form.internalRoute} onChange={(value) => update("internalRoute", value)} /> : null}
           <SettingsBooleanField label="Enable gunzip" description="Allow NGINX to decompress gzipped upstream responses." value={form.gunzip} onChange={(value) => update("gunzip", value)} />
           <SettingsToggleField
             label="Enable External DNS"
@@ -1962,12 +2123,12 @@ export function VirtualServerBuilderPanel({
         </div>
       </Section>
 
-      <Section title="Custom Listeners" description="Custom listener names defined through GlobalConfiguration">
+      {showAdvancedFields ? <Section title="Custom Listeners" description="Custom listener names defined through GlobalConfiguration">
         <div className="settings-table">
           <SettingsSelectField label="HTTP listener" description="HTTP listener name from a GlobalConfiguration resource." value={form.listenerHttp} onChange={(value) => value === createListenerValue ? onCreateResource("GlobalConfiguration", { onCreated: (created) => update("listenerHttp", created) }) : update("listenerHttp", value)} options={listenerOptions(clusterOptions)} />
           <SettingsSelectField label="HTTPS listener" description="HTTPS listener name from a GlobalConfiguration resource." value={form.listenerHttps} onChange={(value) => value === createListenerValue ? onCreateResource("GlobalConfiguration", { onCreated: (created) => update("listenerHttps", created) }) : update("listenerHttps", value)} options={listenerOptions(clusterOptions)} />
         </div>
-      </Section>
+      </Section> : null}
 
       <Section title="TLS" description="Choose a valid same-namespace TLS secret or create a new one, then configure redirect and certificate automation">
         <div className="settings-table">
@@ -1981,21 +2142,15 @@ export function VirtualServerBuilderPanel({
               required
             />
           ) : (
-            <SettingsSelectField
+            <SettingsSecretSelect
               label="TLS secret"
               description="Select a same-namespace secret of type kubernetes.io/tls with tls.crt and tls.key."
               value={form.tlsSecret}
-              onChange={(value) => {
-                if (value === createTlsSecretValue) {
-                  onCreateResource("Secret", {
-                    namespace: form.namespace,
-                    onCreated: (created) => update("tlsSecret", created.includes("/") ? created.split("/").pop() ?? created : created),
-                  });
-                  return;
-                }
-                update("tlsSecret", value);
-              }}
-              options={[{ value: "", label: "None" }, ...sameNamespaceTlsSecrets, { value: createTlsSecretValue, label: "Create Secret" }]}
+              onChange={(value) => update("tlsSecret", value)}
+              clusterOptions={clusterOptions}
+              onCreateResource={onCreateResource}
+              secretType="kubernetes.io/tls"
+              namespace={form.namespace}
             />
           )}
           <SettingsBooleanField
@@ -2086,7 +2241,8 @@ export function VirtualServerBuilderPanel({
             key={`${upstream.name}-${index}`}
             upstream={upstream}
             onChange={(next) => update("upstreams", updateAtIndex(form.upstreams, index, next))}
-            onRemove={form.upstreams.length > 1 ? () => update("upstreams", form.upstreams.filter((_, itemIndex) => itemIndex !== index)) : undefined}
+            onRemove={() => update("upstreams", form.upstreams.filter((_, itemIndex) => itemIndex !== index))}
+            showAdvanced={showAdvancedFields}
           />
         ))}
       </Section>
@@ -2104,9 +2260,10 @@ export function VirtualServerBuilderPanel({
             route={route}
             title={route.path || `Route ${index + 1}`}
             onChange={(next) => update("routes", updateAtIndex(form.routes, index, next))}
-            onRemove={form.routes.length > 1 ? () => update("routes", form.routes.filter((_, itemIndex) => itemIndex !== index)) : undefined}
+            onRemove={() => update("routes", form.routes.filter((_, itemIndex) => itemIndex !== index))}
             clusterOptions={clusterOptions}
             onCreateResource={onCreateResource}
+            showAdvanced={showAdvancedFields}
             showLocationSnippets={false}
           />
         ))}
@@ -2418,6 +2575,7 @@ export function VirtualServerRouteBuilderPanel({
             onRemove={form.subroutes.length > 1 ? () => update("subroutes", form.subroutes.filter((_, itemIndex) => itemIndex !== index)) : undefined}
             clusterOptions={clusterOptions}
             onCreateResource={onCreateResource}
+            showAdvanced
           />
         ))}
       </Section>

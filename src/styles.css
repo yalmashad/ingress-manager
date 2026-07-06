@@ -254,6 +254,14 @@ select:focus-visible {
   margin-bottom: 0;
 }
 
+.panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  align-items: center;
+  justify-content: flex-end;
+}
+
 .field {
   display: grid;
   gap: 0.4rem;
@@ -672,6 +680,37 @@ select:focus-visible {
   min-height: 2.35rem;
 }
 
+.transfer-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 0.65rem;
+  align-items: stretch;
+}
+
+.transfer-pane {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.transfer-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.transfer-pane select {
+  width: 100%;
+  min-height: 8.5rem;
+}
+
+.transfer-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  justify-content: center;
+}
+
 .inline-warning {
   padding: 0.7rem 0.85rem;
   border-bottom: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
@@ -915,6 +954,15 @@ select:focus-visible {
   .settings-row,
   .settings-table-row {
     grid-template-columns: 1fr;
+  }
+
+  .transfer-list {
+    grid-template-columns: 1fr;
+  }
+
+  .transfer-actions {
+    flex-direction: row;
+    flex-wrap: wrap;
   }
 
   .settings-table-label {

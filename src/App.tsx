@@ -514,7 +514,7 @@ function App() {
             apiVersion: "k8s.nginx.org/v1",
             kind: "VirtualServer",
             metadata: { name: next.name, namespace: next.namespace },
-            spec: { host: next.host, upstreams: [], routes: [] },
+            spec: { host: next.host },
           }),
         );
         return;

@@ -2,10 +2,16 @@ import { describe, expect, it } from "vitest";
 import {
   buildPolicyManifest,
   buildSecretManifest,
+  buildVirtualServerManifest,
   defaultPolicyForm,
+  defaultRouteForm,
+  defaultRouteMatchForm,
+  defaultRouteSplitForm,
   defaultSecretForm,
+  defaultVirtualServerForm,
   parsePolicyManifest,
   parseSecretManifest,
+  secretTypeOptions,
 } from "./resourceBuilders";
 
 describe("policy manifest builder", () => {
@@ -13,9 +19,23 @@ describe("policy manifest builder", () => {
     expect(defaultPolicyForm("rateLimit").name).toBe("policy-name");
     expect(defaultSecretForm().name).toBe("secret-name");
     expect(defaultSecretForm().secretType).toBe("");
+    expect(secretTypeOptions.map((option) => option.value)).toContain("kubernetes.io/tls");
   });
 
   it("builds typed NGINX secrets used by policies", () => {
+    expect(
+      buildSecretManifest({
+        ...defaultSecretForm(),
+        name: "tls-secret-name",
+        secretType: "kubernetes.io/tls",
+        certificate: "cert",
+        privateKey: "key",
+      }),
+    ).toMatchObject({
+      type: "kubernetes.io/tls",
+      stringData: { "tls.crt": "cert", "tls.key": "key" },
+    });
+
     expect(
       buildSecretManifest({
         ...defaultSecretForm(),
@@ -75,6 +95,42 @@ describe("policy manifest builder", () => {
     ).toMatchObject({
       type: "nginx.org/jwk",
       stringData: { jwk: '{"keys":[]}' },
+    });
+  });
+
+  it("keeps VirtualServer upstreams and routes optional and supports repeatable route rules", () => {
+    const empty = buildVirtualServerManifest(defaultVirtualServerForm());
+    expect(empty.spec).not.toHaveProperty("upstreams");
+    expect(empty.spec).not.toHaveProperty("routes");
+
+    const form = defaultVirtualServerForm();
+    form.routes = [{ ...defaultRouteForm(), path: "/routing", pass: "tea" }];
+    const methodMatch = defaultRouteMatchForm();
+    methodMatch.conditionType = "variable";
+    methodMatch.conditionName = "$request_method";
+    methodMatch.conditionValue = "POST";
+    methodMatch.pass = "coffee";
+    const splitA = defaultRouteSplitForm();
+    splitA.weight = "90";
+    splitA.pass = "coffee";
+    const splitB = defaultRouteSplitForm();
+    splitB.weight = "10";
+    splitB.pass = "tea";
+    form.routes[0].matches = [methodMatch];
+    form.routes[0].splits = [splitA, splitB];
+
+    expect(buildVirtualServerManifest(form).spec).toMatchObject({
+      routes: [
+        {
+          path: "/routing",
+          action: { pass: "tea" },
+          matches: [{ conditions: [{ variable: "$request_method", value: "POST" }], action: { pass: "coffee" } }],
+          splits: [
+            { weight: 90, action: { pass: "coffee" } },
+            { weight: 10, action: { pass: "tea" } },
+          ],
+        },
+      ],
     });
   });
 

@@ -18,6 +18,7 @@ export type TransportListenerProtocol = "TCP" | "UDP" | "TLS_PASSTHROUGH";
 export type ListenerProtocol = "HTTP" | "TCP" | "UDP";
 export type VerifyClientMode = "on" | "off" | "optional" | "optional_no_ca";
 export type RouteActionType = "pass" | "proxy" | "redirect" | "return";
+export type RouteConditionType = "header" | "cookie" | "argument" | "variable";
 export type UpstreamType = "http" | "grpc";
 export type SecretType =
   | ""
@@ -223,6 +224,31 @@ export type RouteForm = {
   errorReturnCode: string;
   errorReturnType: string;
   errorReturnBody: string;
+  matches: RouteMatchForm[];
+  splits: RouteSplitForm[];
+};
+
+export type RouteMatchForm = {
+  conditionType: RouteConditionType;
+  conditionName: string;
+  conditionValue: string;
+  actionType: RouteActionType;
+  pass: string;
+  proxyUpstream: string;
+  rewritePath: string;
+  redirectUrl: string;
+  redirectCode: string;
+  returnCode: string;
+  returnType: string;
+  returnBody: string;
+};
+
+export type RouteSplitForm = {
+  weight: string;
+  actionType: RouteActionType;
+  pass: string;
+  proxyUpstream: string;
+  rewritePath: string;
 };
 
 export type GlobalConfigurationListenerForm = {
@@ -356,6 +382,7 @@ export const corsMethodOptions = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE
 export const cacheMethodOptions = ["GET", "HEAD", "POST"];
 export const rateKeyExamples = ["${binary_remote_addr}", "${request_uri}", "${request_method}", "${cookie_session}"];
 export const secretTypeOptions: Array<{ value: SecretType; label: string }> = [
+  { value: "kubernetes.io/tls", label: "TLS secret" },
   { value: "nginx.org/apikey", label: "API key secret" },
   { value: "nginx.org/htpasswd", label: "HTTP password secret" },
   { value: "nginx.org/ca", label: "CA cert secret" },
@@ -984,12 +1011,39 @@ export function defaultUpstreamForm(): UpstreamForm {
   };
 }
 
+export function defaultRouteMatchForm(): RouteMatchForm {
+  return {
+    conditionType: "header",
+    conditionName: "",
+    conditionValue: "",
+    actionType: "pass",
+    pass: "",
+    proxyUpstream: "",
+    rewritePath: "",
+    redirectUrl: "",
+    redirectCode: "301",
+    returnCode: "200",
+    returnType: "text/plain",
+    returnBody: "",
+  };
+}
+
+export function defaultRouteSplitForm(): RouteSplitForm {
+  return {
+    weight: "",
+    actionType: "pass",
+    pass: "",
+    proxyUpstream: "",
+    rewritePath: "",
+  };
+}
+
 export function defaultRouteForm(): RouteForm {
   return {
     path: "/",
     actionType: "pass",
-    pass: "app",
-    proxyUpstream: "app",
+    pass: "",
+    proxyUpstream: "",
     rewritePath: "",
     redirectUrl: "",
     redirectCode: "301",
@@ -1023,6 +1077,8 @@ export function defaultRouteForm(): RouteForm {
     errorReturnCode: "200",
     errorReturnType: "text/plain",
     errorReturnBody: "",
+    matches: [],
+    splits: [],
   };
 }
 
@@ -1314,8 +1370,8 @@ export function defaultVirtualServerForm(): VirtualServerForm {
     policyRefsText: "",
     httpSnippets: "",
     serverSnippets: "",
-    upstreams: [defaultUpstreamForm()],
-    routes: [defaultRouteForm()],
+    upstreams: [],
+    routes: [],
   };
 }
 
@@ -1445,7 +1501,10 @@ export function buildVirtualServerManifest(form: VirtualServerForm) {
 
   const spec: Record<string, unknown> = {
     host: form.host,
-    upstreams: form.upstreams.map((upstream) => {
+  };
+
+  if (form.upstreams.length) {
+    spec.upstreams = form.upstreams.map((upstream) => {
       const built: Record<string, unknown> = {
         name: upstream.name,
         service: upstream.service,
@@ -1490,8 +1549,11 @@ export function buildVirtualServerManifest(form: VirtualServerForm) {
         };
       }
       return built;
-    }),
-    routes: form.routes.map((route) => {
+    });
+  }
+
+  if (form.routes.length) {
+    spec.routes = form.routes.map((route) => {
       const built: Record<string, unknown> = {
         path: route.path,
       };
@@ -1527,25 +1589,45 @@ export function buildVirtualServerManifest(form: VirtualServerForm) {
       if (route.locationSnippets.trim()) built["location-snippets"] = route.locationSnippets;
       if (route.dos.trim()) built.dos = route.dos.trim();
       if (route.routeSelectorText.trim()) built.routeSelector = parseYamlBlock(route.routeSelectorText);
-      const matchAction = buildNestedAction(route.matchActionType, {
-        pass: route.matchActionPass,
-        proxyUpstream: route.matchProxyUpstream,
-        rewritePath: route.matchRewritePath,
-        redirectUrl: route.matchRedirectUrl,
-        redirectCode: route.matchRedirectCode,
-        returnCode: route.matchReturnCode,
-        returnType: route.matchReturnType,
-        returnBody: route.matchReturnBody,
-      });
-      if (route.matchConditionName.trim() && route.matchValue.trim() && matchAction) {
-        built.matches = [
-          {
-            conditions: [{ [route.matchConditionType]: route.matchConditionName.trim(), value: route.matchValue.trim() }],
-            action: matchAction,
-          },
-        ];
-      }
-      if (
+      const builtMatches = route.matches
+        .map((match) => {
+          const action = buildNestedAction(match.actionType, {
+            pass: match.pass,
+            proxyUpstream: match.proxyUpstream,
+            rewritePath: match.rewritePath,
+            redirectUrl: match.redirectUrl,
+            redirectCode: match.redirectCode,
+            returnCode: match.returnCode,
+            returnType: match.returnType,
+            returnBody: match.returnBody,
+          });
+          if (!match.conditionName.trim() || !match.conditionValue.trim() || !action) return undefined;
+          return {
+            conditions: [{ [match.conditionType]: match.conditionName.trim(), value: match.conditionValue.trim() }],
+            action,
+          };
+        })
+        .filter(Boolean);
+      if (builtMatches.length) built.matches = builtMatches;
+      const builtSplits = route.splits
+        .map((split) => {
+          if (!split.weight.trim()) return undefined;
+          const action = buildNestedAction(split.actionType, {
+            pass: split.pass,
+            proxyUpstream: split.proxyUpstream,
+            rewritePath: split.rewritePath,
+            redirectUrl: "",
+            redirectCode: "",
+            returnCode: "",
+            returnType: "",
+            returnBody: "",
+          });
+          return action ? { weight: Number(split.weight), action } : undefined;
+        })
+        .filter(Boolean);
+      if (builtSplits.length) {
+        built.splits = builtSplits;
+      } else if (
         route.splitPrimaryPass.trim() &&
         route.splitSecondaryPass.trim() &&
         route.splitPrimaryWeight.trim() &&
@@ -1578,8 +1660,8 @@ export function buildVirtualServerManifest(form: VirtualServerForm) {
         ];
       }
       return built;
-    }),
-  };
+    });
+  }
 
   if (form.ingressClassName.trim()) spec.ingressClassName = form.ingressClassName.trim();
   if (form.internalRoute) spec.internalRoute = true;
@@ -1757,38 +1839,72 @@ export function parseVirtualServerManifest(manifest: Record<string, unknown>): V
         route.locationSnippets = String(item["location-snippets"] ?? "");
         route.dos = String(item.dos ?? "");
         route.routeSelectorText = stringifyYamlBlock(item.routeSelector);
-        const firstMatch = Array.isArray(item.matches) ? (item.matches[0] as Record<string, unknown> | undefined) : undefined;
-        const firstCondition = Array.isArray(firstMatch?.conditions)
-          ? ((firstMatch?.conditions as Array<Record<string, unknown>>)[0] ?? undefined)
-          : undefined;
-        route.matchConditionType = firstCondition?.header
-          ? "header"
-          : firstCondition?.cookie
-            ? "cookie"
-            : firstCondition?.argument
-              ? "argument"
-              : "variable";
-        route.matchConditionName = String(firstCondition?.header ?? firstCondition?.cookie ?? firstCondition?.argument ?? firstCondition?.variable ?? "");
-        route.matchValue = String(firstCondition?.value ?? "");
-        const firstMatchAction = ((firstMatch?.action ?? {}) as Record<string, unknown>) ?? {};
-        if (firstMatchAction.pass) {
-          route.matchActionType = "pass";
-          route.matchActionPass = String(firstMatchAction.pass ?? "");
-        } else if (firstMatchAction.proxy) {
-          route.matchActionType = "proxy";
-          route.matchProxyUpstream = String(((firstMatchAction.proxy as Record<string, unknown>)?.upstream) ?? "");
-          route.matchRewritePath = String(((firstMatchAction.proxy as Record<string, unknown>)?.rewritePath) ?? "");
-        } else if (firstMatchAction.redirect) {
-          route.matchActionType = "redirect";
-          route.matchRedirectUrl = String(((firstMatchAction.redirect as Record<string, unknown>)?.url) ?? "");
-          route.matchRedirectCode = ((firstMatchAction.redirect as Record<string, unknown>)?.code) !== undefined ? String((firstMatchAction.redirect as Record<string, unknown>)?.code) : "301";
-        } else if (firstMatchAction.return) {
-          route.matchActionType = "return";
-          route.matchReturnCode = ((firstMatchAction.return as Record<string, unknown>)?.code) !== undefined ? String((firstMatchAction.return as Record<string, unknown>)?.code) : "200";
-          route.matchReturnType = String(((firstMatchAction.return as Record<string, unknown>)?.type) ?? "text/plain");
-          route.matchReturnBody = String(((firstMatchAction.return as Record<string, unknown>)?.body) ?? "");
+        route.matches = Array.isArray(item.matches)
+          ? (item.matches as Array<Record<string, unknown>>).map((matchItem) => {
+              const match = defaultRouteMatchForm();
+              const firstCondition = Array.isArray(matchItem.conditions)
+                ? ((matchItem.conditions as Array<Record<string, unknown>>)[0] ?? undefined)
+                : undefined;
+              match.conditionType = firstCondition?.header
+                ? "header"
+                : firstCondition?.cookie
+                  ? "cookie"
+                  : firstCondition?.argument
+                    ? "argument"
+                    : "variable";
+              match.conditionName = String(firstCondition?.header ?? firstCondition?.cookie ?? firstCondition?.argument ?? firstCondition?.variable ?? "");
+              match.conditionValue = String(firstCondition?.value ?? "");
+              const matchAction = ((matchItem.action ?? {}) as Record<string, unknown>) ?? {};
+              if (matchAction.pass) {
+                match.actionType = "pass";
+                match.pass = String(matchAction.pass ?? "");
+              } else if (matchAction.proxy) {
+                match.actionType = "proxy";
+                match.proxyUpstream = String(((matchAction.proxy as Record<string, unknown>)?.upstream) ?? "");
+                match.rewritePath = String(((matchAction.proxy as Record<string, unknown>)?.rewritePath) ?? "");
+              } else if (matchAction.redirect) {
+                match.actionType = "redirect";
+                match.redirectUrl = String(((matchAction.redirect as Record<string, unknown>)?.url) ?? "");
+                match.redirectCode = ((matchAction.redirect as Record<string, unknown>)?.code) !== undefined ? String((matchAction.redirect as Record<string, unknown>)?.code) : "301";
+              } else if (matchAction.return) {
+                match.actionType = "return";
+                match.returnCode = ((matchAction.return as Record<string, unknown>)?.code) !== undefined ? String((matchAction.return as Record<string, unknown>)?.code) : "200";
+                match.returnType = String(((matchAction.return as Record<string, unknown>)?.type) ?? "text/plain");
+                match.returnBody = String(((matchAction.return as Record<string, unknown>)?.body) ?? "");
+              }
+              return match;
+            })
+          : [];
+        const firstMatch = route.matches[0];
+        if (firstMatch) {
+          route.matchConditionType = firstMatch.conditionType;
+          route.matchConditionName = firstMatch.conditionName;
+          route.matchValue = firstMatch.conditionValue;
+          route.matchActionType = firstMatch.actionType;
+          route.matchActionPass = firstMatch.pass;
+          route.matchProxyUpstream = firstMatch.proxyUpstream;
+          route.matchRewritePath = firstMatch.rewritePath;
+          route.matchRedirectUrl = firstMatch.redirectUrl;
+          route.matchRedirectCode = firstMatch.redirectCode;
+          route.matchReturnCode = firstMatch.returnCode;
+          route.matchReturnType = firstMatch.returnType;
+          route.matchReturnBody = firstMatch.returnBody;
         }
         const splits = Array.isArray(item.splits) ? (item.splits as Array<Record<string, unknown>>) : [];
+        route.splits = splits.map((split) => {
+          const splitForm = defaultRouteSplitForm();
+          splitForm.weight = split.weight !== undefined ? String(split.weight) : "";
+          const splitAction = ((split.action ?? {}) as Record<string, unknown>) ?? {};
+          if (splitAction.proxy) {
+            splitForm.actionType = "proxy";
+            splitForm.proxyUpstream = String(((splitAction.proxy as Record<string, unknown>)?.upstream) ?? "");
+            splitForm.rewritePath = String(((splitAction.proxy as Record<string, unknown>)?.rewritePath) ?? "");
+          } else {
+            splitForm.actionType = "pass";
+            splitForm.pass = String(splitAction.pass ?? "");
+          }
+          return splitForm;
+        });
         route.splitPrimaryWeight = splits[0]?.weight !== undefined ? String(splits[0].weight) : "80";
         route.splitPrimaryPass = String((((splits[0]?.action ?? {}) as Record<string, unknown>).pass) ?? "");
         route.splitSecondaryWeight = splits[1]?.weight !== undefined ? String(splits[1].weight) : "20";
