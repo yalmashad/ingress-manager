@@ -1,0 +1,13 @@
+services:
+  ingress-manager:
+    build: .
+    image: ingress-manager:latest
+    ports:
+      - "4000:4000"
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      SESSION_SECRET: change-this-session-secret
+      COOKIE_SECURE: "false"
+      TRUST_PROXY: "false"
+    restart: unless-stopped
