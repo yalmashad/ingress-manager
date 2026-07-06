@@ -8,6 +8,7 @@ export type PolicyType =
   | "jwt"
   | "ingressMTLS"
   | "egressMTLS"
+  | "externalAuth"
   | "oidc"
   | "waf"
   | "cache"
@@ -69,6 +70,17 @@ export type PolicyForm = {
   egressMtlsServerName: boolean;
   egressMtlsSslName: string;
   egressMtlsSessionReuse: boolean;
+  externalAuthUri: string;
+  externalAuthServiceName: string;
+  externalAuthServicePorts: string;
+  externalAuthSigninUri: string;
+  externalAuthSnippets: string;
+  externalAuthSigninRedirectBasePath: string;
+  externalAuthSslEnabled: boolean;
+  externalAuthSslVerify: boolean;
+  externalAuthSslVerifyDepth: string;
+  externalAuthTrustedCertSecret: string;
+  externalAuthSniName: string;
   oidcClientId: string;
   oidcClientSecret: string;
   oidcAuthEndpoint: string;
@@ -301,6 +313,7 @@ export const policyTypeOptions: Array<{ value: PolicyType; label: string }> = [
   { value: "jwt", label: "JWT" },
   { value: "ingressMTLS", label: "Ingress mTLS" },
   { value: "egressMTLS", label: "Egress mTLS" },
+  { value: "externalAuth", label: "External auth" },
   { value: "oidc", label: "OIDC" },
   { value: "waf", label: "WAF" },
   { value: "cache", label: "Cache" },
@@ -433,6 +446,17 @@ export function defaultPolicyForm(policyType: PolicyType = "rateLimit"): PolicyF
     egressMtlsServerName: true,
     egressMtlsSslName: "",
     egressMtlsSessionReuse: true,
+    externalAuthUri: "/auth",
+    externalAuthServiceName: "",
+    externalAuthServicePorts: "",
+    externalAuthSigninUri: "",
+    externalAuthSnippets: "",
+    externalAuthSigninRedirectBasePath: "",
+    externalAuthSslEnabled: false,
+    externalAuthSslVerify: false,
+    externalAuthSslVerifyDepth: "1",
+    externalAuthTrustedCertSecret: "",
+    externalAuthSniName: "",
     oidcClientId: "",
     oidcClientSecret: "",
     oidcAuthEndpoint: "",
@@ -593,6 +617,24 @@ export function buildPolicyManifest(form: PolicyForm) {
     };
   }
 
+  if (form.policyType === "externalAuth") {
+    spec.externalAuth = {
+      ...(form.externalAuthUri.trim() ? { authURI: form.externalAuthUri.trim() } : {}),
+      ...(form.externalAuthServiceName.trim() ? { authServiceName: form.externalAuthServiceName.trim() } : {}),
+      ...(form.externalAuthServicePorts.trim() ? { authServicePorts: splitLines(form.externalAuthServicePorts).map(Number) } : {}),
+      ...(form.externalAuthSigninUri.trim() ? { authSigninURI: form.externalAuthSigninUri.trim() } : {}),
+      ...(form.externalAuthSnippets.trim() ? { authSnippets: form.externalAuthSnippets } : {}),
+      ...(form.externalAuthSigninRedirectBasePath.trim()
+        ? { authSigninRedirectBasePath: form.externalAuthSigninRedirectBasePath.trim() }
+        : {}),
+      ...(form.externalAuthSslEnabled ? { sslEnabled: true } : {}),
+      ...(form.externalAuthSslVerify ? { sslVerify: true } : {}),
+      ...(form.externalAuthSslVerifyDepth.trim() ? { sslVerifyDepth: Number(form.externalAuthSslVerifyDepth) } : {}),
+      ...(form.externalAuthTrustedCertSecret.trim() ? { trustedCertSecret: form.externalAuthTrustedCertSecret.trim() } : {}),
+      ...(form.externalAuthSniName.trim() ? { sniName: form.externalAuthSniName.trim() } : {}),
+    };
+  }
+
   if (form.policyType === "oidc") {
     spec.oidc = {
       ...(form.oidcClientId.trim() ? { clientID: form.oidcClientId.trim() } : {}),
@@ -610,7 +652,7 @@ export function buildPolicyManifest(form: PolicyForm) {
       ...(form.oidcPkceEnable ? { pkceEnable: true } : {}),
       ...(form.oidcTrustedCertSecret.trim() ? { trustedCertSecret: form.oidcTrustedCertSecret.trim() } : {}),
       ...(form.oidcSslVerify ? { sslVerify: true } : {}),
-      ...(form.oidcSslVerifyDepth.trim() ? { sslVerifyDepth: Number(form.oidcSslVerifyDepth) } : {}),
+      ...(form.oidcSslVerifyDepth.trim() ? { verifyDepth: Number(form.oidcSslVerifyDepth) } : {}),
       ...(form.oidcZoneSyncLeeway.trim() ? { zoneSyncLeeway: Number(form.oidcZoneSyncLeeway) } : {}),
       ...(form.oidcAuthExtraArgs.trim() ? { authExtraArgs: splitLines(form.oidcAuthExtraArgs) } : {}),
     };
@@ -623,12 +665,14 @@ export function buildPolicyManifest(form: PolicyForm) {
       ...(form.wafApBundle.trim() ? { apBundle: form.wafApBundle.trim() } : {}),
       ...((form.wafSecurityLogEnable || form.wafSecurityLogConf.trim() || form.wafSecurityLogDest.trim() || form.wafSecurityLogBundle.trim())
         ? {
-            securityLog: {
-              ...(form.wafSecurityLogEnable ? { enable: true } : {}),
-              ...(form.wafSecurityLogConf.trim() ? { apLogConf: form.wafSecurityLogConf.trim() } : {}),
-              ...(form.wafSecurityLogBundle.trim() ? { apLogBundle: form.wafSecurityLogBundle.trim() } : {}),
-              ...(form.wafSecurityLogDest.trim() ? { logDest: form.wafSecurityLogDest.trim() } : {}),
-            },
+            securityLogs: [
+              {
+                ...(form.wafSecurityLogEnable ? { enable: true } : {}),
+                ...(form.wafSecurityLogConf.trim() ? { apLogConf: form.wafSecurityLogConf.trim() } : {}),
+                ...(form.wafSecurityLogBundle.trim() ? { apLogBundle: form.wafSecurityLogBundle.trim() } : {}),
+                ...(form.wafSecurityLogDest.trim() ? { logDest: form.wafSecurityLogDest.trim() } : {}),
+              },
+            ],
           }
         : {}),
     };
@@ -698,6 +742,7 @@ export function parsePolicyManifest(manifest: Record<string, unknown>) {
     "jwt",
     "ingressMTLS",
     "egressMTLS",
+    "externalAuth",
     "oidc",
     "waf",
     "cache",
@@ -779,6 +824,20 @@ export function parsePolicyManifest(manifest: Record<string, unknown>) {
     form.egressMtlsSessionReuse = value.sessionReuse === undefined ? true : Boolean(value.sessionReuse);
   }
 
+  if (policyType === "externalAuth") {
+    form.externalAuthUri = String(value.authURI ?? "");
+    form.externalAuthServiceName = String(value.authServiceName ?? "");
+    form.externalAuthServicePorts = Array.isArray(value.authServicePorts) ? (value.authServicePorts as number[]).join("\n") : "";
+    form.externalAuthSigninUri = String(value.authSigninURI ?? "");
+    form.externalAuthSnippets = String(value.authSnippets ?? "");
+    form.externalAuthSigninRedirectBasePath = String(value.authSigninRedirectBasePath ?? "");
+    form.externalAuthSslEnabled = Boolean(value.sslEnabled);
+    form.externalAuthSslVerify = Boolean(value.sslVerify);
+    form.externalAuthSslVerifyDepth = value.sslVerifyDepth !== undefined ? String(value.sslVerifyDepth) : "";
+    form.externalAuthTrustedCertSecret = String(value.trustedCertSecret ?? "");
+    form.externalAuthSniName = String(value.sniName ?? "");
+  }
+
   if (policyType === "oidc") {
     form.oidcClientId = String(value.clientID ?? "");
     form.oidcClientSecret = String(value.clientSecret ?? "");
@@ -793,7 +852,7 @@ export function parsePolicyManifest(manifest: Record<string, unknown>) {
     form.oidcPkceEnable = Boolean(value.pkceEnable);
     form.oidcTrustedCertSecret = String(value.trustedCertSecret ?? "");
     form.oidcSslVerify = Boolean(value.sslVerify);
-    form.oidcSslVerifyDepth = value.sslVerifyDepth !== undefined ? String(value.sslVerifyDepth) : "";
+    form.oidcSslVerifyDepth = value.verifyDepth !== undefined ? String(value.verifyDepth) : value.sslVerifyDepth !== undefined ? String(value.sslVerifyDepth) : "";
     form.oidcZoneSyncLeeway = value.zoneSyncLeeway !== undefined ? String(value.zoneSyncLeeway) : "";
     form.oidcAuthExtraArgs = Array.isArray(value.authExtraArgs) ? (value.authExtraArgs as string[]).join("\n") : "";
   }
@@ -802,7 +861,8 @@ export function parsePolicyManifest(manifest: Record<string, unknown>) {
     form.wafEnable = Boolean(value.enable);
     form.wafApPolicy = String(value.apPolicy ?? "");
     form.wafApBundle = String(value.apBundle ?? "");
-    const securityLog = (value.securityLog ?? {}) as Record<string, unknown>;
+    const securityLogs = Array.isArray(value.securityLogs) ? value.securityLogs : [];
+    const securityLog = ((securityLogs[0] as Record<string, unknown> | undefined) ?? value.securityLog ?? {}) as Record<string, unknown>;
     form.wafSecurityLogEnable = Boolean(securityLog.enable);
     form.wafSecurityLogConf = String(securityLog.apLogConf ?? "");
     form.wafSecurityLogBundle = String(securityLog.apLogBundle ?? "");

@@ -95,6 +95,7 @@ const policyTypeDescriptions: Record<PolicyType, string> = {
   jwt: "Validate JWT tokens from a secret or remote JWKS.",
   ingressMTLS: "Require and verify client TLS certificates at ingress.",
   egressMTLS: "Use mTLS when the ingress controller connects upstream.",
+  externalAuth: "Authenticate requests through an external auth service.",
   oidc: "Use OpenID Connect authentication with an external IdP.",
   waf: "Attach App Protect WAF policy and log settings.",
   cache: "Control NGINX Plus response caching behavior.",
@@ -1178,6 +1179,24 @@ function PolicySettings({
     );
   }
 
+  if (form.policyType === "externalAuth") {
+    return (
+      <div className="builder-grid">
+        <TextField label="Auth URI" description="Internal URI where NGINX sends auth subrequests. Must start with /." value={form.externalAuthUri} onChange={(value) => update("externalAuthUri", value)} placeholder="example: /oauth2/auth" required />
+        <TextField label="Auth service" description="Service that receives auth subrequests. Use name or namespace/name." value={form.externalAuthServiceName} onChange={(value) => update("externalAuthServiceName", value)} placeholder="example: default/oauth2-proxy" />
+        <TextAreaField label="Auth service ports" description="One or more service ports for the auth service." value={form.externalAuthServicePorts} onChange={(value) => update("externalAuthServicePorts", value)} placeholder="example: 4180" />
+        <TextField label="Signin URI" description="URI where unauthenticated users are redirected." value={form.externalAuthSigninUri} onChange={(value) => update("externalAuthSigninUri", value)} placeholder="example: /oauth2/signin" />
+        <TextField label="Signin redirect base path" description="Base path used to build sign-in redirects." value={form.externalAuthSigninRedirectBasePath} onChange={(value) => update("externalAuthSigninRedirectBasePath", value)} placeholder="example: /oauth2" />
+        <SecretField label="Trusted cert secret" description="CA secret used to verify the auth service TLS certificate." value={form.externalAuthTrustedCertSecret} onChange={(value) => update("externalAuthTrustedCertSecret", value)} placeholder="example: external-auth-ca" />
+        <TextField label="SSL verify depth" description="Maximum certificate chain depth for the auth service." value={form.externalAuthSslVerifyDepth} onChange={(value) => update("externalAuthSslVerifyDepth", value)} placeholder="default: 1" />
+        <TextField label="SNI name" description="Server name used during TLS to the auth service." value={form.externalAuthSniName} onChange={(value) => update("externalAuthSniName", value)} placeholder="example: auth.example.com" />
+        <TextAreaField label="Auth snippets" description="Advanced directives injected into the generated auth location." value={form.externalAuthSnippets} onChange={(value) => update("externalAuthSnippets", value)} placeholder="" />
+        <BooleanSelectField label="Use TLS to auth service" description="Connect to the external auth service with TLS." value={form.externalAuthSslEnabled} onChange={(value) => update("externalAuthSslEnabled", value)} />
+        <BooleanSelectField label="Verify auth service certificate" description="Require TLS certificate validation for the auth service." value={form.externalAuthSslVerify} onChange={(value) => update("externalAuthSslVerify", value)} />
+      </div>
+    );
+  }
+
   if (form.policyType === "oidc") {
     return (
       <div className="builder-grid">
@@ -1192,7 +1211,7 @@ function PolicySettings({
         <TextField label="Scope" description="OIDC scopes requested during login." value={form.oidcScope} onChange={(value) => update("oidcScope", value)} placeholder="example: openid profile email" />
         <SecretField label="Trusted cert secret" description="CA secret used to verify the OIDC provider." value={form.oidcTrustedCertSecret} onChange={(value) => update("oidcTrustedCertSecret", value)} placeholder="example: idp-ca" />
         <TextField label="SSL verify depth" description="Maximum certificate chain depth for the OIDC provider." value={form.oidcSslVerifyDepth} onChange={(value) => update("oidcSslVerifyDepth", value)} placeholder="default: 1" />
-        <TextField label="Zone sync leeway" description="Milliseconds allowed for token sync between controller pods." value={form.oidcZoneSyncLeeway} onChange={(value) => update("oidcZoneSyncLeeway", value)} placeholder="default: 2000" />
+        <TextField label="Zone sync leeway" description="Milliseconds allowed for token sync between controller pods." value={form.oidcZoneSyncLeeway} onChange={(value) => update("oidcZoneSyncLeeway", value)} placeholder="default: 200" />
         <TextAreaField label="Extra auth args" description="Additional provider-specific authorization parameters." value={form.oidcAuthExtraArgs} onChange={(value) => update("oidcAuthExtraArgs", value)} placeholder="example: prompt=login&#10;audience=api" />
         <BooleanSelectField label="Pass access token to backend" description="Forward the access token to upstream applications." value={form.oidcAccessTokenEnable} onChange={(value) => update("oidcAccessTokenEnable", value)} />
         <BooleanSelectField label="Enable PKCE" description="Use Proof Key for Code Exchange." value={form.oidcPkceEnable} onChange={(value) => update("oidcPkceEnable", value)} />
@@ -1206,9 +1225,9 @@ function PolicySettings({
       <div className="builder-grid">
         <TextField label="App Protect policy" description="App Protect WAF policy resource reference." value={form.wafApPolicy} onChange={(value) => update("wafApPolicy", value)} placeholder="example: default/webapp-ap-policy" />
         <TextField label="App Protect bundle" description="App Protect WAF bundle reference." value={form.wafApBundle} onChange={(value) => update("wafApBundle", value)} placeholder="example: waf-bundle" />
-        <TextField label="Security log conf" description="App Protect WAF log configuration reference." value={form.wafSecurityLogConf} onChange={(value) => update("wafSecurityLogConf", value)} placeholder="example: default/waf-log-conf" />
-        <TextField label="Security log bundle" description="App Protect WAF log bundle reference." value={form.wafSecurityLogBundle} onChange={(value) => update("wafSecurityLogBundle", value)} placeholder="example: waf-log-bundle" />
-        <TextField label="Security log destination" description="Where WAF security logs should be written." value={form.wafSecurityLogDest} onChange={(value) => update("wafSecurityLogDest", value)} placeholder="example: stderr" />
+        <TextField label="Security log conf" description="App Protect WAF log configuration reference used in securityLogs." value={form.wafSecurityLogConf} onChange={(value) => update("wafSecurityLogConf", value)} placeholder="example: default/waf-log-conf" />
+        <TextField label="Security log bundle" description="App Protect WAF log bundle reference used in securityLogs." value={form.wafSecurityLogBundle} onChange={(value) => update("wafSecurityLogBundle", value)} placeholder="example: waf-log-bundle" />
+        <TextField label="Security log destination" description="Where WAF securityLogs should be written." value={form.wafSecurityLogDest} onChange={(value) => update("wafSecurityLogDest", value)} placeholder="example: stderr" />
         <BooleanSelectField label="Enable WAF" description="Enable App Protect WAF enforcement." value={form.wafEnable} onChange={(value) => update("wafEnable", value)} />
         <BooleanSelectField label="Enable security log" description="Enable App Protect WAF security logging." value={form.wafSecurityLogEnable} onChange={(value) => update("wafSecurityLogEnable", value)} />
       </div>

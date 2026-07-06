@@ -46,9 +46,9 @@ export const resourceCatalog: ResourceCatalogEntry[] = [
     namespaced: true,
     plural: "policies",
     docsUrl: "https://docs.nginx.com/nginx-ingress-controller/configuration/policy-resource/",
-    description: "Reusable security and traffic policies such as JWT, rate limiting, access control, mTLS, WAF, and API key settings.",
-    commonFields: ["spec.accessControl", "spec.rateLimit", "spec.jwt", "spec.egressMTLS", "spec.apiKey"],
-    examples: ["access-control", "api-key", "basic-auth", "jwt", "mtls"]
+    description: "Reusable security and traffic policies such as access control, CORS, rate limiting, external auth, OIDC, mTLS, WAF, cache, and API key settings.",
+    commonFields: ["spec.accessControl", "spec.rateLimit", "spec.externalAuth", "spec.oidc", "spec.waf", "spec.cache"],
+    examples: ["access-control", "api-key", "basic-auth", "jwt", "external-auth", "mtls"]
   },
   {
     kind: "GlobalConfiguration",
@@ -122,6 +122,7 @@ export const officialExampleDirectories = [
   "dos-protected-resource",
   "e2e-mtls",
   "egress-mtls",
+  "external-auth",
   "external-dns",
   "fault-injection",
   "grpc",
