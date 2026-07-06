@@ -1,0 +1,41 @@
+import YAML from "yaml";
+
+type KubeconfigDocument = {
+  clusters?: Array<{
+    cluster?: {
+      server?: string;
+    };
+  }>;
+};
+
+const loopbackHosts = new Set(["127.0.0.1", "localhost", "::1"]);
+
+export function rewriteLoopbackClusterServers(kubeconfig: string, rewriteHost: string | undefined) {
+  if (!rewriteHost) {
+    return kubeconfig;
+  }
+
+  const parsed = YAML.parse(kubeconfig) as KubeconfigDocument | null;
+  if (!parsed?.clusters) {
+    return kubeconfig;
+  }
+
+  let changed = false;
+  for (const entry of parsed.clusters) {
+    const server = entry.cluster?.server;
+    if (!server) continue;
+
+    try {
+      const url = new URL(server);
+      if (!loopbackHosts.has(url.hostname)) continue;
+
+      url.hostname = rewriteHost;
+      entry.cluster = { ...entry.cluster, server: url.toString() };
+      changed = true;
+    } catch {
+      // Leave non-URL server values untouched so Kubernetes validation owns the error.
+    }
+  }
+
+  return changed ? YAML.stringify(parsed) : kubeconfig;
+}

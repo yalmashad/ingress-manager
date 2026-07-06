@@ -31,5 +31,6 @@ docker compose down
 ## Notes
 
 - Works on Linux and macOS hosts with Docker Compose.
+- Local kubeconfigs that point to `127.0.0.1` or `localhost` are automatically routed from the container to the Docker host.
 - For shared deployments, put the app behind your normal HTTPS reverse proxy.
 - Sessions are isolated by browser cookie and stored in server memory. Restarting the container clears active sessions.

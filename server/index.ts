@@ -15,6 +15,7 @@ import {
   KubernetesObjectApi,
 } from "@kubernetes/client-node";
 import { resourceCatalog } from "./catalog.js";
+import { rewriteLoopbackClusterServers } from "./kubeconfig.js";
 import { createResourceTemplate } from "./templates.js";
 
 declare module "express-session" {
@@ -31,6 +32,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const clientDistPath = path.resolve(__dirname, "../dist");
 const isProduction = process.env.NODE_ENV === "production";
 const sessionSecret = process.env.SESSION_SECRET ?? crypto.randomBytes(32).toString("hex");
+const kubeconfigLoopbackHost = process.env.KUBECONFIG_LOOPBACK_HOST;
 
 if (process.env.TRUST_PROXY === "true") {
   app.set("trust proxy", 1);
@@ -287,7 +289,7 @@ app.post("/api/session/kubeconfig", upload.single("file"), (req, res) => {
   try {
     const fileContent = req.file?.buffer?.toString("utf8");
     const bodyContent = typeof req.body.kubeconfig === "string" ? req.body.kubeconfig : "";
-    const kubeconfig = fileContent || bodyContent;
+    const kubeconfig = rewriteLoopbackClusterServers(fileContent || bodyContent, kubeconfigLoopbackHost);
 
     if (!kubeconfig.trim()) {
       res.status(400).json({ message: "Upload a kubeconfig file or paste kubeconfig content." });

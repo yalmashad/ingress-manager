@@ -8,5 +8,8 @@ services:
       NODE_ENV: production
       PORT: 4000
       COOKIE_SECURE: "false"
+      KUBECONFIG_LOOPBACK_HOST: host.docker.internal
       TRUST_PROXY: "false"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
