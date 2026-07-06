@@ -7,7 +7,6 @@ services:
     environment:
       NODE_ENV: production
       PORT: 4000
-      SESSION_SECRET: change-this-session-secret
       COOKIE_SECURE: "false"
       TRUST_PROXY: "false"
     restart: unless-stopped

@@ -1,6 +1,7 @@
 import express from "express";
 import session from "express-session";
 import multer from "multer";
+import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -29,6 +30,7 @@ const upload = multer();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const clientDistPath = path.resolve(__dirname, "../dist");
 const isProduction = process.env.NODE_ENV === "production";
+const sessionSecret = process.env.SESSION_SECRET ?? crypto.randomBytes(32).toString("hex");
 
 if (process.env.TRUST_PROXY === "true") {
   app.set("trust proxy", 1);
@@ -37,7 +39,7 @@ if (process.env.TRUST_PROXY === "true") {
 app.use(express.json({ limit: "2mb" }));
 app.use(
   session({
-    secret: process.env.SESSION_SECRET ?? "nginx-plus-ingress-manager-dev",
+    secret: sessionSecret,
     resave: false,
     saveUninitialized: false,
     cookie: {
