@@ -643,13 +643,26 @@ select:focus-visible {
 }
 
 .settings-table-control textarea {
+  min-height: 2.35rem;
   resize: vertical;
+}
+
+.settings-table-control textarea[rows="1"] {
+  height: 2.35rem;
 }
 
 .settings-checkbox {
   width: fit-content;
   margin: 0;
   padding: 0.42rem 0.5rem;
+}
+
+.settings-checklist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+  min-height: 2.35rem;
 }
 
 .inline-warning {

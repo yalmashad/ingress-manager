@@ -522,6 +522,57 @@ function SettingsToggleField({
   );
 }
 
+function SettingsBooleanField({
+  label,
+  description,
+  value,
+  onChange,
+}: {
+  label: string;
+  description: string;
+  value: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return <SettingsToggleField label={label} description={description} checked={value} onChange={onChange} />;
+}
+
+function SettingsChecklistField({
+  label,
+  description,
+  valuesText,
+  options,
+  onChange,
+}: {
+  label: string;
+  description: string;
+  valuesText: string;
+  options: string[];
+  onChange: (value: string) => void;
+}) {
+  const selected = new Set(splitLines(valuesText));
+  return (
+    <SettingsRow label={label} description={description}>
+      <div className="settings-checklist">
+        {options.map((option) => (
+          <label key={option} className="checkbox slim">
+            <input
+              type="checkbox"
+              checked={selected.has(option)}
+              onChange={(event) => {
+                const next = new Set(selected);
+                if (event.target.checked) next.add(option);
+                else next.delete(option);
+                onChange(joinLines([...next]));
+              }}
+            />
+            <span>{option}</span>
+          </label>
+        ))}
+      </div>
+    </SettingsRow>
+  );
+}
+
 function initialSecretManifest(secretType: SecretType, namespace?: string) {
   const form = defaultSecretForm();
   form.secretType = secretType;
@@ -1318,8 +1369,8 @@ function PolicySettings({
         {hasAccessConflict ? (
           <div className="inline-warning">Allow and deny lists are both set. NGINX Ingress Controller uses only the allow list when both are referenced.</div>
         ) : null}
-        <SettingsTextAreaField label="Allow list" description="CIDRs or IPs that are allowed." value={form.accessAllow} onChange={(value) => update("accessAllow", value)} placeholder="example: 10.0.0.0/8" />
-        <SettingsTextAreaField label="Deny list" description="CIDRs or IPs that are denied." value={form.accessDeny} onChange={(value) => update("accessDeny", value)} placeholder="example: 0.0.0.0/0" />
+        <SettingsTextAreaField label="Allow list" description="CIDRs or IPs that are allowed." value={form.accessAllow} onChange={(value) => update("accessAllow", value)} placeholder="example: 10.0.0.0/8" rows={1} />
+        <SettingsTextAreaField label="Deny list" description="CIDRs or IPs that are denied." value={form.accessDeny} onChange={(value) => update("accessDeny", value)} placeholder="example: 0.0.0.0/0" rows={1} />
       </div>
     );
   }
@@ -1426,13 +1477,17 @@ function PolicySettings({
     return (
       <div className="settings-table">
         <SettingsSelectField label="JWT source" description="Use a local JWK secret or fetch keys from a remote JWKS endpoint." value={form.jwtMode} onChange={(value) => update("jwtMode", value as JwtMode)} options={[{ value: "localSecret", label: "JWT Using Local Kubernetes Secret" }, { value: "remoteJwks", label: "JWT Using JWKS From Remote Location" }]} required />
-        <SettingsTextField label="Realm" description="Realm shown when JWT authentication fails." value={form.jwtRealm} onChange={(value) => update("jwtRealm", value)} placeholder="example: Closed Area" />
-        <SettingsTextField label="Token variable" description="Variable used to locate the JWT token." value={form.jwtToken} onChange={(value) => update("jwtToken", value)} placeholder="example: $http_authorization" />
         {form.jwtMode === "localSecret" ? (
           <SettingsSecretSelect label="JWK secret" description="Secret of type nginx.org/jwk." value={form.jwtSecret} onChange={(value) => update("jwtSecret", value)} clusterOptions={clusterOptions} onCreateResource={onCreateResource} secretType="nginx.org/jwk" namespace={form.namespace} required />
         ) : (
           <>
             <SettingsTextField label="JWKS URI" description="Remote JWKS endpoint used to validate tokens." value={form.jwtJwksUri} onChange={(value) => update("jwtJwksUri", value)} placeholder="example: https://idp.example.com/.well-known/jwks.json" required />
+          </>
+        )}
+        <SettingsTextField label="Realm" description="Realm shown when JWT authentication fails." value={form.jwtRealm} onChange={(value) => update("jwtRealm", value)} placeholder="example: Closed Area" />
+        <SettingsTextField label="Token variable" description="Variable used to locate the JWT token." value={form.jwtToken} onChange={(value) => update("jwtToken", value)} placeholder="example: $http_authorization" />
+        {form.jwtMode === "remoteJwks" ? (
+          <>
             <SettingsTextField label="Key cache" description="How long JWKS keys should be cached." value={form.jwtKeyCache} onChange={(value) => update("jwtKeyCache", value)} placeholder="default: 1h" />
             <SettingsSecretSelect label="Trusted cert secret" description="CA secret used to verify the JWKS endpoint." value={form.jwtTrustedCertSecret} onChange={(value) => update("jwtTrustedCertSecret", value)} clusterOptions={clusterOptions} onCreateResource={onCreateResource} secretType="nginx.org/ca" namespace={form.namespace} />
             <SettingsTextField label="SSL verify depth" description="Maximum certificate chain depth for the JWKS endpoint." value={form.jwtSslVerifyDepth} onChange={(value) => update("jwtSslVerifyDepth", value)} placeholder="default: 1" />
@@ -1440,7 +1495,7 @@ function PolicySettings({
             <SettingsToggleField label="Verify JWKS certificate" description="Require TLS certificate validation for the JWKS endpoint." checked={form.jwtSslVerify} onChange={(value) => update("jwtSslVerify", value)} />
             <SettingsToggleField label="Enable SNI" description="Send SNI when connecting to the JWKS endpoint." checked={form.jwtSniEnabled} onChange={(value) => update("jwtSniEnabled", value)} />
           </>
-        )}
+        ) : null}
       </div>
     );
   }
@@ -1515,75 +1570,57 @@ function PolicySettings({
 
   if (form.policyType === "waf") {
     return (
-      <div className="builder-grid">
-        <TextField label="App Protect policy" description="App Protect WAF policy resource reference." value={form.wafApPolicy} onChange={(value) => update("wafApPolicy", value)} placeholder="example: default/webapp-ap-policy" />
-        <TextField label="App Protect bundle" description="App Protect WAF bundle reference." value={form.wafApBundle} onChange={(value) => update("wafApBundle", value)} placeholder="example: waf-bundle" />
-        <TextField label="Security log conf" description="App Protect WAF log configuration reference used in securityLogs." value={form.wafSecurityLogConf} onChange={(value) => update("wafSecurityLogConf", value)} placeholder="example: default/waf-log-conf" />
-        <TextField label="Security log bundle" description="App Protect WAF log bundle reference used in securityLogs." value={form.wafSecurityLogBundle} onChange={(value) => update("wafSecurityLogBundle", value)} placeholder="example: waf-log-bundle" />
-        <TextField label="Security log destination" description="Where WAF securityLogs should be written." value={form.wafSecurityLogDest} onChange={(value) => update("wafSecurityLogDest", value)} placeholder="example: stderr" />
-        <BooleanSelectField label="Enable WAF" description="Enable App Protect WAF enforcement." value={form.wafEnable} onChange={(value) => update("wafEnable", value)} />
-        <BooleanSelectField label="Enable security log" description="Enable App Protect WAF security logging." value={form.wafSecurityLogEnable} onChange={(value) => update("wafSecurityLogEnable", value)} />
+      <div className="settings-table">
+        <SettingsBooleanField label="Enable WAF" description="Enable App Protect WAF enforcement." value={form.wafEnable} onChange={(value) => update("wafEnable", value)} />
+        <SettingsTextField label="App Protect policy" description="App Protect WAF policy resource reference." value={form.wafApPolicy} onChange={(value) => update("wafApPolicy", value)} placeholder="example: default/webapp-ap-policy" />
+        <SettingsTextField label="App Protect bundle" description="App Protect WAF bundle reference." value={form.wafApBundle} onChange={(value) => update("wafApBundle", value)} placeholder="example: waf-bundle" />
+        <SettingsBooleanField label="Enable security log" description="Enable App Protect WAF security logging." value={form.wafSecurityLogEnable} onChange={(value) => update("wafSecurityLogEnable", value)} />
+        <SettingsTextField label="Security log conf" description="App Protect WAF log configuration reference used in securityLogs." value={form.wafSecurityLogConf} onChange={(value) => update("wafSecurityLogConf", value)} placeholder="example: default/waf-log-conf" />
+        <SettingsTextField label="Security log bundle" description="App Protect WAF log bundle reference used in securityLogs." value={form.wafSecurityLogBundle} onChange={(value) => update("wafSecurityLogBundle", value)} placeholder="example: waf-log-bundle" />
+        <SettingsTextField label="Security log destination" description="Where WAF securityLogs should be written." value={form.wafSecurityLogDest} onChange={(value) => update("wafSecurityLogDest", value)} placeholder="example: stderr" />
       </div>
     );
   }
 
   if (form.policyType === "cache") {
     return (
-      <>
-        <div className="builder-grid">
-          <TextField label="Cache zone name" description="Name of the shared cache zone." value={form.cacheZoneName} onChange={(value) => update("cacheZoneName", value)} placeholder="example: maincache" />
-          <TextField label="Cache zone size" description="Size of the cache zone in memory." value={form.cacheZoneSize} onChange={(value) => update("cacheZoneSize", value)} placeholder="example: 10m" />
-          <TextField label="Cache key" description="NGINX cache key expression." value={form.cacheKey} onChange={(value) => update("cacheKey", value)} placeholder="example: $scheme$proxy_host$uri$is_args$args" />
-          <TextField label="Cache time" description="Default time to cache responses." value={form.cacheTime} onChange={(value) => update("cacheTime", value)} placeholder="example: 10m" />
-          <TextField label="Min uses" description="Number of identical requests before caching begins." value={form.cacheMinUses} onChange={(value) => update("cacheMinUses", value)} placeholder="default: 1" />
-          <TextField label="Inactive time" description="How long unused cache entries remain before eviction." value={form.cacheInactive} onChange={(value) => update("cacheInactive", value)} placeholder="default: 10m" />
-          <TextField label="Levels" description="Directory layout for cache files on disk." value={form.cacheLevels} onChange={(value) => update("cacheLevels", value)} placeholder="example: 1:2" />
-          <TextField label="Max size" description="Maximum disk size for the cache." value={form.cacheMaxSize} onChange={(value) => update("cacheMaxSize", value)} placeholder="example: 1g" />
-          <TextField label="Min free" description="Free disk space to preserve before eviction." value={form.cacheMinFree} onChange={(value) => update("cacheMinFree", value)} placeholder="example: 100m" />
-          <TextAreaField label="Allowed codes" description="Response status codes to cache." value={form.cacheAllowedCodes} onChange={(value) => update("cacheAllowedCodes", value)} placeholder="example: 200&#10;301&#10;404" />
-          <TextAreaField label="Use stale conditions" description="Failure cases where stale cache may be served." value={form.cacheUseStale} onChange={(value) => update("cacheUseStale", value)} placeholder="example: error&#10;timeout&#10;updating" />
-          <TextAreaField label="Bypass conditions" description="Expressions that bypass cache lookup." value={form.cacheBypass} onChange={(value) => update("cacheBypass", value)} placeholder="example: ${http_cache_bypass}" />
-          <TextAreaField label="No-cache conditions" description="Expressions that prevent cache save." value={form.cacheNoCache} onChange={(value) => update("cacheNoCache", value)} placeholder="example: ${cookie_nocache}" />
-          <TextAreaField label="Purge allow list" description="CIDRs allowed to purge cache entries." value={form.cachePurgeAllow} onChange={(value) => update("cachePurgeAllow", value)} placeholder="example: 10.0.0.0/8" />
-          <TextField label="Lock age" description="Maximum time a cache lock may be held." value={form.cacheLockAge} onChange={(value) => update("cacheLockAge", value)} placeholder="default: 5s" />
-          <TextField label="Lock timeout" description="How long to wait on a cache lock before bypassing." value={form.cacheLockTimeout} onChange={(value) => update("cacheLockTimeout", value)} placeholder="default: 5s" />
-        </div>
-        {multiSelectChecklist({
-          label: "Allowed methods",
-          description: "HTTP methods that may be cached.",
-          valuesText: form.cacheAllowedMethods,
-          options: cacheMethodOptions,
-          onChange: (value) => update("cacheAllowedMethods", value),
-        })}
-        <div className="builder-grid">
-          <BooleanSelectField label="Use temp path" description="Write temp files outside the cache path." value={form.cacheUseTempPath} onChange={(value) => update("cacheUseTempPath", value)} />
-          <BooleanSelectField label="Background update" description="Refresh expired cache entries in the background." value={form.cacheBackgroundUpdate} onChange={(value) => update("cacheBackgroundUpdate", value)} />
-          <BooleanSelectField label="Revalidate" description="Revalidate expired cache with conditional requests." value={form.cacheRevalidate} onChange={(value) => update("cacheRevalidate", value)} />
-          <BooleanSelectField label="Override upstream cache headers" description="Ignore upstream cache-control headers." value={form.cacheOverrideUpstreamCache} onChange={(value) => update("cacheOverrideUpstreamCache", value)} />
-          <BooleanSelectField label="Enable cache lock" description="Avoid duplicate concurrent cache fills." value={form.cacheLockEnable} onChange={(value) => update("cacheLockEnable", value)} />
-        </div>
-      </>
+      <div className="settings-table">
+        <SettingsTextField label="Cache zone name" description="Name of the shared cache zone." value={form.cacheZoneName} onChange={(value) => update("cacheZoneName", value)} placeholder="example: maincache" />
+        <SettingsTextField label="Cache zone size" description="Size of the cache zone in memory." value={form.cacheZoneSize} onChange={(value) => update("cacheZoneSize", value)} placeholder="example: 10m" />
+        <SettingsTextField label="Cache key" description="NGINX cache key expression." value={form.cacheKey} onChange={(value) => update("cacheKey", value)} placeholder="example: $scheme$proxy_host$uri$is_args$args" />
+        <SettingsTextField label="Cache time" description="Default time to cache responses." value={form.cacheTime} onChange={(value) => update("cacheTime", value)} placeholder="example: 10m" />
+        <SettingsChecklistField label="Allowed methods" description="HTTP methods that may be cached." valuesText={form.cacheAllowedMethods} options={cacheMethodOptions} onChange={(value) => update("cacheAllowedMethods", value)} />
+        <SettingsTextAreaField label="Allowed codes" description="Response status codes to cache." value={form.cacheAllowedCodes} onChange={(value) => update("cacheAllowedCodes", value)} placeholder="example: 200&#10;301&#10;404" rows={2} />
+        <SettingsTextField label="Min uses" description="Number of identical requests before caching begins." value={form.cacheMinUses} onChange={(value) => update("cacheMinUses", value)} placeholder="default: 1" />
+        <SettingsTextField label="Inactive time" description="How long unused cache entries remain before eviction." value={form.cacheInactive} onChange={(value) => update("cacheInactive", value)} placeholder="default: 10m" />
+        <SettingsTextField label="Levels" description="Directory layout for cache files on disk." value={form.cacheLevels} onChange={(value) => update("cacheLevels", value)} placeholder="example: 1:2" />
+        <SettingsTextField label="Max size" description="Maximum disk size for the cache." value={form.cacheMaxSize} onChange={(value) => update("cacheMaxSize", value)} placeholder="example: 1g" />
+        <SettingsTextField label="Min free" description="Free disk space to preserve before eviction." value={form.cacheMinFree} onChange={(value) => update("cacheMinFree", value)} placeholder="example: 100m" />
+        <SettingsTextAreaField label="Use stale conditions" description="Failure cases where stale cache may be served." value={form.cacheUseStale} onChange={(value) => update("cacheUseStale", value)} placeholder="example: error&#10;timeout&#10;updating" rows={2} />
+        <SettingsTextAreaField label="Bypass conditions" description="Expressions that bypass cache lookup." value={form.cacheBypass} onChange={(value) => update("cacheBypass", value)} placeholder="example: ${http_cache_bypass}" rows={2} />
+        <SettingsTextAreaField label="No-cache conditions" description="Expressions that prevent cache save." value={form.cacheNoCache} onChange={(value) => update("cacheNoCache", value)} placeholder="example: ${cookie_nocache}" rows={2} />
+        <SettingsTextAreaField label="Purge allow list" description="CIDRs allowed to purge cache entries." value={form.cachePurgeAllow} onChange={(value) => update("cachePurgeAllow", value)} placeholder="example: 10.0.0.0/8" rows={2} />
+        <SettingsTextField label="Lock age" description="Maximum time a cache lock may be held." value={form.cacheLockAge} onChange={(value) => update("cacheLockAge", value)} placeholder="default: 5s" />
+        <SettingsTextField label="Lock timeout" description="How long to wait on a cache lock before bypassing." value={form.cacheLockTimeout} onChange={(value) => update("cacheLockTimeout", value)} placeholder="default: 5s" />
+        <SettingsBooleanField label="Use temp path" description="Write temp files outside the cache path." value={form.cacheUseTempPath} onChange={(value) => update("cacheUseTempPath", value)} />
+        <SettingsBooleanField label="Background update" description="Refresh expired cache entries in the background." value={form.cacheBackgroundUpdate} onChange={(value) => update("cacheBackgroundUpdate", value)} />
+        <SettingsBooleanField label="Revalidate" description="Revalidate expired cache with conditional requests." value={form.cacheRevalidate} onChange={(value) => update("cacheRevalidate", value)} />
+        <SettingsBooleanField label="Override upstream cache headers" description="Ignore upstream cache-control headers." value={form.cacheOverrideUpstreamCache} onChange={(value) => update("cacheOverrideUpstreamCache", value)} />
+        <SettingsBooleanField label="Enable cache lock" description="Avoid duplicate concurrent cache fills." value={form.cacheLockEnable} onChange={(value) => update("cacheLockEnable", value)} />
+      </div>
     );
   }
 
   if (form.policyType === "cors") {
     return (
-      <>
-        <div className="builder-grid">
-          <TextAreaField label="Allowed origins" description="Origins allowed to make cross-origin requests." value={form.corsAllowOrigin} onChange={(value) => update("corsAllowOrigin", value)} placeholder="example: https://example.com" />
-          <TextAreaField label="Allowed headers" description="Headers allowed in CORS requests." value={form.corsAllowHeaders} onChange={(value) => update("corsAllowHeaders", value)} placeholder="example: Authorization&#10;Content-Type" />
-          <TextAreaField label="Expose headers" description="Response headers browsers may read." value={form.corsExposeHeaders} onChange={(value) => update("corsExposeHeaders", value)} placeholder="example: X-Request-Id" />
-          <TextField label="Max age" description="How long browsers may cache preflight responses." value={form.corsMaxAge} onChange={(value) => update("corsMaxAge", value)} placeholder="default: 86400" />
-          <BooleanSelectField label="Allow credentials" description="Allow cookies or auth headers on cross-origin requests." value={form.corsAllowCredentials} onChange={(value) => update("corsAllowCredentials", value)} />
-        </div>
-        {multiSelectChecklist({
-          label: "Allowed methods",
-          description: "Methods allowed for CORS requests.",
-          valuesText: form.corsAllowMethods,
-          options: corsMethodOptions,
-          onChange: (value) => update("corsAllowMethods", value),
-        })}
-      </>
+      <div className="settings-table">
+        <SettingsTextAreaField label="Allowed origins" description="Origins allowed to make cross-origin requests." value={form.corsAllowOrigin} onChange={(value) => update("corsAllowOrigin", value)} placeholder="example: https://example.com" rows={2} />
+        <SettingsChecklistField label="Allowed methods" description="Methods allowed for CORS requests." valuesText={form.corsAllowMethods} options={corsMethodOptions} onChange={(value) => update("corsAllowMethods", value)} />
+        <SettingsTextAreaField label="Allowed headers" description="Headers allowed in CORS requests." value={form.corsAllowHeaders} onChange={(value) => update("corsAllowHeaders", value)} placeholder="example: Authorization&#10;Content-Type" rows={2} />
+        <SettingsTextAreaField label="Expose headers" description="Response headers browsers may read." value={form.corsExposeHeaders} onChange={(value) => update("corsExposeHeaders", value)} placeholder="example: X-Request-Id" rows={2} />
+        <SettingsTextField label="Max age" description="How long browsers may cache preflight responses." value={form.corsMaxAge} onChange={(value) => update("corsMaxAge", value)} placeholder="default: 86400" />
+        <SettingsBooleanField label="Allow credentials" description="Allow cookies or auth headers on cross-origin requests." value={form.corsAllowCredentials} onChange={(value) => update("corsAllowCredentials", value)} />
+      </div>
     );
   }
 
