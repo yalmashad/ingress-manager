@@ -804,7 +804,7 @@ function TlsSecretField({
         }
         onChange(next);
       }}
-      options={resourceOptions(clusterOptions.tlsSecrets, createTlsSecretValue, "Create new TLS secret...")}
+      options={resourceOptions(clusterOptions.tlsSecrets, createTlsSecretValue, "Create Secret")}
     />
   );
 }
@@ -1748,15 +1748,9 @@ export function VirtualServerBuilderPanel({
   setManifestText,
   setNotice,
   clusterOptions,
-  onSubmitManifest,
   onCreateResource,
 }: { form: VirtualServerForm; setForm: Dispatch<SetStateAction<VirtualServerForm>> } & PropsCommon) {
   const update = <K extends keyof VirtualServerForm>(key: K, value: VirtualServerForm[K]) => setForm((current) => ({ ...current, [key]: value }));
-  const [tlsSecretModalOpen, setTlsSecretModalOpen] = useState(false);
-  const [tlsSecretName, setTlsSecretName] = useState(form.tlsSecret || "app-tls");
-  const [tlsCertificate, setTlsCertificate] = useState("");
-  const [tlsPrivateKey, setTlsPrivateKey] = useState("");
-  const [tlsSecretSaving, setTlsSecretSaving] = useState(false);
   const derivedCertManagerEnabled = Boolean(
     form.certIssuer.trim() || form.certClusterIssuer.trim() || form.certIssuerKind.trim() || form.certIssuerGroup.trim(),
   );
@@ -1776,43 +1770,6 @@ export function VirtualServerBuilderPanel({
     setCertManagerEnabled(derivedCertManagerEnabled);
     setCertManagerMode(derivedCertManagerMode);
   }, [form.certIssuer, form.certClusterIssuer, form.certIssuerKind, form.certIssuerGroup, derivedCertManagerEnabled, derivedCertManagerMode]);
-
-  async function handleTlsFileUpload(file: File | null, type: "cert" | "key") {
-    if (!file) return;
-    const text = await file.text();
-    if (type === "cert") setTlsCertificate(text);
-    else setTlsPrivateKey(text);
-  }
-
-  async function createTlsSecret() {
-    if (!tlsSecretName.trim()) return;
-    setTlsSecretSaving(true);
-    try {
-      await onSubmitManifest(
-        {
-          apiVersion: "v1",
-          kind: "Secret",
-          metadata: {
-            name: tlsSecretName.trim(),
-            namespace: form.namespace,
-          },
-          type: "kubernetes.io/tls",
-          stringData: {
-            "tls.crt": tlsCertificate.trim(),
-            "tls.key": tlsPrivateKey.trim(),
-          },
-        },
-        {
-          onCreated: (created) => update("tlsSecret", created.includes("/") ? created.split("/").pop() ?? created : created),
-        },
-      );
-      setTlsSecretModalOpen(false);
-      setTlsCertificate("");
-      setTlsPrivateKey("");
-    } finally {
-      setTlsSecretSaving(false);
-    }
-  }
 
   return (
     <div className="builder-panel">
@@ -1886,13 +1843,15 @@ export function VirtualServerBuilderPanel({
               value={form.tlsSecret}
               onChange={(value) => {
                 if (value === createTlsSecretValue) {
-                  setTlsSecretName(form.tlsSecret || `${form.name || "virtualserver"}-tls`);
-                  setTlsSecretModalOpen(true);
+                  onCreateResource("Secret", {
+                    namespace: form.namespace,
+                    onCreated: (created) => update("tlsSecret", created.includes("/") ? created.split("/").pop() ?? created : created),
+                  });
                   return;
                 }
                 update("tlsSecret", value);
               }}
-              options={[{ value: "", label: "None" }, ...sameNamespaceTlsSecrets, { value: createTlsSecretValue, label: "Create new TLS secret..." }]}
+              options={[{ value: "", label: "None" }, ...sameNamespaceTlsSecrets, { value: createTlsSecretValue, label: "Create Secret" }]}
             />
           )}
           <div className="field checkbox-field">
@@ -1977,82 +1936,6 @@ export function VirtualServerBuilderPanel({
           {certManagerEnabled && certManagerMode === "clusterIssuer" ? <TextField label="ClusterIssuer name" description="ClusterIssuer name for cert-manager." value={form.certClusterIssuer} onChange={(value) => update("certClusterIssuer", value)} placeholder="example: letsencrypt-prod" /> : null}
         </div>
       </Section>
-
-      {tlsSecretModalOpen ? (
-        <div className="overlay-backdrop">
-          <div className="overlay-panel tls-secret-modal">
-            <div className="panel-heading">
-              <h3>Create TLS Secret</h3>
-              <div className="editor-actions">
-                <button type="button" className="secondary" onClick={() => setTlsSecretModalOpen(false)}>
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="primary"
-                  disabled={tlsSecretSaving || !tlsSecretName.trim() || !tlsCertificate.trim() || !tlsPrivateKey.trim()}
-                  onClick={() => void createTlsSecret()}
-                >
-                  {tlsSecretSaving ? "Creating..." : "Create secret"}
-                </button>
-              </div>
-            </div>
-            <div className="builder-grid">
-              <TextField
-                label="Secret name"
-                description="Name of the same-namespace kubernetes.io/tls secret to create."
-                value={tlsSecretName}
-                onChange={setTlsSecretName}
-                placeholder="example: cafe-secret"
-                required
-              />
-              <TextField
-                label="Namespace"
-                description="The new secret will be created in the same namespace as this VirtualServer."
-                value={form.namespace}
-                onChange={() => undefined}
-                placeholder=""
-              />
-              <div className="field">
-                <span className="field-label">
-                  Upload certificate
-                  <button type="button" className="help-tip" title="Upload a PEM certificate file for tls.crt." aria-label="Upload certificate help">
-                    ?
-                  </button>
-                </span>
-                <input type="file" accept=".crt,.pem,.cer,text/plain" onChange={(event) => void handleTlsFileUpload(event.target.files?.[0] ?? null, "cert")} />
-              </div>
-              <div className="field">
-                <span className="field-label">
-                  Upload private key
-                  <button type="button" className="help-tip" title="Upload a PEM private key file for tls.key." aria-label="Upload private key help">
-                    ?
-                  </button>
-                </span>
-                <input type="file" accept=".key,.pem,text/plain" onChange={(event) => void handleTlsFileUpload(event.target.files?.[0] ?? null, "key")} />
-              </div>
-              <TextAreaField
-                label="Certificate"
-                description="Paste the PEM-encoded certificate content for tls.crt."
-                value={tlsCertificate}
-                onChange={setTlsCertificate}
-                placeholder="-----BEGIN CERTIFICATE-----"
-                rows={6}
-                required
-              />
-              <TextAreaField
-                label="Private key"
-                description="Paste the PEM-encoded private key content for tls.key."
-                value={tlsPrivateKey}
-                onChange={setTlsPrivateKey}
-                placeholder="-----BEGIN PRIVATE KEY-----"
-                rows={6}
-                required
-              />
-            </div>
-          </div>
-        </div>
-      ) : null}
 
       <Section title="Upstreams" description="Backend services and HTTP upstream tuning">
         <div className="panel-heading compact">
@@ -2264,7 +2147,7 @@ export function TransportServerBuilderPanel({
           <NamespaceField value={form.namespace} onChange={(value) => update("namespace", value)} clusterOptions={clusterOptions} />
           <TextField label="Host" description="Optional SNI host used for TLS passthrough." value={form.host} onChange={(value) => update("host", value)} placeholder="example: tcp.example.com" />
           <IngressClassField value={form.ingressClassName} onChange={(value) => update("ingressClassName", value)} clusterOptions={clusterOptions} />
-          <SelectField label="Listener name" description="Listener created in GlobalConfiguration." value={form.listenerName} onChange={(value) => value === createListenerValue ? onCreateResource("GlobalConfiguration", { onCreated: (created) => update("listenerName", created) }) : update("listenerName", value)} options={listenerOptions(clusterOptions)} />
+          <SelectField label="Listener name" description="Listener created in GlobalConfiguration." value={form.listenerName} onChange={(value) => value === createListenerValue ? onCreateResource("GlobalConfiguration", { onCreated: (created) => update("listenerName", created) }) : update("listenerName", value)} options={listenerOptions(clusterOptions)} required />
           <SelectField label="Listener protocol" description="Protocol used by this listener." value={form.listenerProtocol} onChange={(value) => update("listenerProtocol", value as TransportServerForm["listenerProtocol"])} options={transportListenerProtocolOptions} required />
           <TextField label="Action pass upstream" description="Upstream that receives matching TCP or UDP traffic." value={form.actionPass} onChange={(value) => update("actionPass", value)} placeholder="example: tcp-app" required />
           <TlsSecretField value={form.tlsSecret} onChange={(value) => update("tlsSecret", value)} clusterOptions={clusterOptions} onCreateResource={onCreateResource} />

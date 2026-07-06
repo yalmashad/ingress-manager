@@ -590,6 +590,11 @@ select:focus-visible {
   gap: 0.85rem;
 }
 
+.builder-panel .builder-grid,
+.overlay-panel .builder-grid {
+  grid-template-columns: 1fr;
+}
+
 .grid-span-2 {
   grid-column: 1 / -1;
 }

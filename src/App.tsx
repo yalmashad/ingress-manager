@@ -821,7 +821,7 @@ function App() {
           <h1>NGINX Plus Ingress Manager</h1>
           <p className="lede">
             {appMode === "generator"
-              ? "Build NGINX Ingress manifests without connecting to a Kubernetes cluster, then copy YAML for manual apply."
+              ? "Config-Generator mode"
               : "Inspect the controller, import kubeconfig, review live NGINX resources, and apply safe edits back to your remote clusters."}
           </p>
           <div className="theme-toggle" role="group" aria-label="Theme">
