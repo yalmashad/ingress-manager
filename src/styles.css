@@ -284,6 +284,8 @@ select:focus-visible {
 .field input,
 .field select,
 .field textarea,
+.secret-source-field input,
+.secret-source-field textarea,
 .settings-control input,
 .settings-control select,
 .settings-control textarea,
@@ -701,6 +703,31 @@ select:focus-visible {
   margin-bottom: 0.8rem;
 }
 
+.secret-source-field {
+  display: grid;
+  gap: 0.5rem;
+  margin-bottom: 0.8rem;
+}
+
+.secret-source-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+  align-items: center;
+}
+
+.radio-option {
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+  font-weight: 600;
+}
+
+.radio-option input {
+  width: auto;
+  margin: 0;
+}
+
 .subsection,
 .nested-card {
   gap: 0.75rem;
@@ -858,6 +885,8 @@ select:focus-visible {
 
 .overlay-panel {
   width: min(920px, 100%);
+  max-height: calc(100vh - 2.5rem);
+  overflow: auto;
   background: var(--surface-strong);
 }
 

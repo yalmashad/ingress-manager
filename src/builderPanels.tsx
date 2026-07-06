@@ -542,16 +542,18 @@ function SettingsChecklistField({
   valuesText,
   options,
   onChange,
+  required = false,
 }: {
   label: string;
   description: string;
   valuesText: string;
   options: string[];
   onChange: (value: string) => void;
+  required?: boolean;
 }) {
   const selected = new Set(splitLines(valuesText));
   return (
-    <SettingsRow label={label} description={description}>
+    <SettingsRow label={label} description={description} required={required}>
       <div className="settings-checklist">
         {options.map((option) => (
           <label key={option} className="checkbox slim">
@@ -616,7 +618,7 @@ function SettingsSecretSelect({
   namespace?: string;
   required?: boolean;
 }) {
-  const options = resourceOptions(typedSecretItems(clusterOptions, secretType), createTypedSecretValue, `Create new ${secretTypeLabel(secretType)}...`);
+  const options = resourceOptions(typedSecretItems(clusterOptions, secretType), createTypedSecretValue, "Create Secret");
   return (
     <SettingsSelectField
       label={label}
@@ -636,6 +638,61 @@ function SettingsSecretSelect({
       options={options}
       required={required}
     />
+  );
+}
+
+type SecretInputSource = "upload" | "paste";
+
+function SecretSourceField({
+  label,
+  description,
+  source,
+  onSourceChange,
+  fileAccept,
+  onFileUpload,
+  textValue,
+  onTextChange,
+  textPlaceholder,
+  textRows = 8,
+  required = false,
+}: {
+  label: string;
+  description: string;
+  source: SecretInputSource;
+  onSourceChange: (value: SecretInputSource) => void;
+  fileAccept: string;
+  onFileUpload: (file: File | null) => void;
+  textValue: string;
+  onTextChange: (value: string) => void;
+  textPlaceholder: string;
+  textRows?: number;
+  required?: boolean;
+}) {
+  return (
+    <div className="secret-source-field">
+      <div className="field-label">
+        {label}
+        {required ? <span className="required-indicator">Required</span> : null}
+        <button type="button" className="help-tip" title={description} aria-label={`${label}: ${description}`}>
+          ?
+        </button>
+      </div>
+      <div className="secret-source-options" role="radiogroup" aria-label={`${label} source`}>
+        <label className="radio-option">
+          <input type="radio" checked={source === "upload"} onChange={() => onSourceChange("upload")} />
+          <span>Upload File</span>
+        </label>
+        <label className="radio-option">
+          <input type="radio" checked={source === "paste"} onChange={() => onSourceChange("paste")} />
+          <span>Paste Text</span>
+        </label>
+      </div>
+      {source === "upload" ? (
+        <input type="file" accept={fileAccept} onChange={(event) => onFileUpload(event.target.files?.[0] ?? null)} />
+      ) : (
+        <textarea rows={textRows} value={textValue} placeholder={textPlaceholder} onChange={(event) => onTextChange(event.target.value)} />
+      )}
+    </div>
   );
 }
 
@@ -1572,7 +1629,7 @@ function PolicySettings({
     return (
       <div className="settings-table">
         <SettingsBooleanField label="Enable WAF" description="Enable App Protect WAF enforcement." value={form.wafEnable} onChange={(value) => update("wafEnable", value)} />
-        <SettingsTextField label="App Protect policy" description="App Protect WAF policy resource reference." value={form.wafApPolicy} onChange={(value) => update("wafApPolicy", value)} placeholder="example: default/webapp-ap-policy" />
+        <SettingsTextField label="App Protect policy" description="App Protect WAF policy resource reference." value={form.wafApPolicy} onChange={(value) => update("wafApPolicy", value)} placeholder="example: default/webapp-ap-policy" required />
         <SettingsTextField label="App Protect bundle" description="App Protect WAF bundle reference." value={form.wafApBundle} onChange={(value) => update("wafApBundle", value)} placeholder="example: waf-bundle" />
         <SettingsBooleanField label="Enable security log" description="Enable App Protect WAF security logging." value={form.wafSecurityLogEnable} onChange={(value) => update("wafSecurityLogEnable", value)} />
         <SettingsTextField label="Security log conf" description="App Protect WAF log configuration reference used in securityLogs." value={form.wafSecurityLogConf} onChange={(value) => update("wafSecurityLogConf", value)} placeholder="example: default/waf-log-conf" />
@@ -1585,10 +1642,10 @@ function PolicySettings({
   if (form.policyType === "cache") {
     return (
       <div className="settings-table">
-        <SettingsTextField label="Cache zone name" description="Name of the shared cache zone." value={form.cacheZoneName} onChange={(value) => update("cacheZoneName", value)} placeholder="example: maincache" />
-        <SettingsTextField label="Cache zone size" description="Size of the cache zone in memory." value={form.cacheZoneSize} onChange={(value) => update("cacheZoneSize", value)} placeholder="example: 10m" />
-        <SettingsTextField label="Cache key" description="NGINX cache key expression." value={form.cacheKey} onChange={(value) => update("cacheKey", value)} placeholder="example: $scheme$proxy_host$uri$is_args$args" />
-        <SettingsTextField label="Cache time" description="Default time to cache responses." value={form.cacheTime} onChange={(value) => update("cacheTime", value)} placeholder="example: 10m" />
+        <SettingsTextField label="Cache zone name" description="Name of the shared cache zone." value={form.cacheZoneName} onChange={(value) => update("cacheZoneName", value)} placeholder="example: maincache" required />
+        <SettingsTextField label="Cache zone size" description="Size of the cache zone in memory." value={form.cacheZoneSize} onChange={(value) => update("cacheZoneSize", value)} placeholder="example: 10m" required />
+        <SettingsTextField label="Cache key" description="NGINX cache key expression." value={form.cacheKey} onChange={(value) => update("cacheKey", value)} placeholder="example: $scheme$proxy_host$uri$is_args$args" required />
+        <SettingsTextField label="Cache time" description="Default time to cache responses." value={form.cacheTime} onChange={(value) => update("cacheTime", value)} placeholder="example: 10m" required />
         <SettingsChecklistField label="Allowed methods" description="HTTP methods that may be cached." valuesText={form.cacheAllowedMethods} options={cacheMethodOptions} onChange={(value) => update("cacheAllowedMethods", value)} />
         <SettingsTextAreaField label="Allowed codes" description="Response status codes to cache." value={form.cacheAllowedCodes} onChange={(value) => update("cacheAllowedCodes", value)} placeholder="example: 200&#10;301&#10;404" rows={2} />
         <SettingsTextField label="Min uses" description="Number of identical requests before caching begins." value={form.cacheMinUses} onChange={(value) => update("cacheMinUses", value)} placeholder="default: 1" />
@@ -1614,8 +1671,8 @@ function PolicySettings({
   if (form.policyType === "cors") {
     return (
       <div className="settings-table">
-        <SettingsTextAreaField label="Allowed origins" description="Origins allowed to make cross-origin requests." value={form.corsAllowOrigin} onChange={(value) => update("corsAllowOrigin", value)} placeholder="example: https://example.com" rows={2} />
-        <SettingsChecklistField label="Allowed methods" description="Methods allowed for CORS requests." valuesText={form.corsAllowMethods} options={corsMethodOptions} onChange={(value) => update("corsAllowMethods", value)} />
+        <SettingsTextAreaField label="Allowed origins" description="Origins allowed to make cross-origin requests." value={form.corsAllowOrigin} onChange={(value) => update("corsAllowOrigin", value)} placeholder="example: https://example.com" rows={2} required />
+        <SettingsChecklistField label="Allowed methods" description="Methods allowed for CORS requests." valuesText={form.corsAllowMethods} options={corsMethodOptions} onChange={(value) => update("corsAllowMethods", value)} required />
         <SettingsTextAreaField label="Allowed headers" description="Headers allowed in CORS requests." value={form.corsAllowHeaders} onChange={(value) => update("corsAllowHeaders", value)} placeholder="example: Authorization&#10;Content-Type" rows={2} />
         <SettingsTextAreaField label="Expose headers" description="Response headers browsers may read." value={form.corsExposeHeaders} onChange={(value) => update("corsExposeHeaders", value)} placeholder="example: X-Request-Id" rows={2} />
         <SettingsTextField label="Max age" description="How long browsers may cache preflight responses." value={form.corsMaxAge} onChange={(value) => update("corsMaxAge", value)} placeholder="default: 86400" />
@@ -2331,10 +2388,17 @@ export function SecretBuilderPanel({
   setManifestText,
   setNotice,
   clusterOptions,
-}: { form: SecretForm; setForm: Dispatch<SetStateAction<SecretForm>> } & PropsCommon) {
+  showApplyButton = true,
+}: { form: SecretForm; setForm: Dispatch<SetStateAction<SecretForm>>; showApplyButton?: boolean } & PropsCommon) {
   const update = <K extends keyof SecretForm>(key: K, value: SecretForm[K]) => setForm((current) => ({ ...current, [key]: value }));
+  const [certificateSource, setCertificateSource] = useState<SecretInputSource>("upload");
+  const [privateKeySource, setPrivateKeySource] = useState<SecretInputSource>("upload");
+  const [htpasswdSource, setHtpasswdSource] = useState<SecretInputSource>("upload");
+  const [caCertificateSource, setCaCertificateSource] = useState<SecretInputSource>("upload");
+  const [caCrlSource, setCaCrlSource] = useState<SecretInputSource>("upload");
+  const [jwkSource, setJwkSource] = useState<SecretInputSource>("upload");
 
-  async function handleFileUpload(file: File | null, type: "certificate" | "privateKey" | "caCertificate" | "jwk") {
+  async function handleFileUpload(file: File | null, type: "certificate" | "privateKey" | "htpasswd" | "caCertificate" | "caCrl" | "jwk") {
     if (!file) return;
     const text = await file.text();
     update(type, text);
@@ -2349,9 +2413,11 @@ export function SecretBuilderPanel({
     <div className="builder-panel">
       <div className="panel-heading">
         <h3>Secret builder</h3>
-        <button type="button" className="secondary" onClick={apply}>
-          Reflect in YAML
-        </button>
+        {showApplyButton ? (
+          <button type="button" className="secondary" onClick={apply}>
+            Reflect in YAML
+          </button>
+        ) : null}
       </div>
 
       <Section title="General" description="Name, namespace, and secret type" defaultOpen>
@@ -2365,26 +2431,8 @@ export function SecretBuilderPanel({
       {form.secretType === "kubernetes.io/tls" ? (
       <Section title="TLS Certificate" description="Certificate and private key required by kubernetes.io/tls" defaultOpen>
         <div className="builder-grid">
-          <div className="field">
-            <span className="field-label">
-              Upload certificate
-              <button type="button" className="help-tip" title="Upload a PEM certificate file for tls.crt." aria-label="Upload certificate help">
-                ?
-              </button>
-            </span>
-            <input type="file" accept=".crt,.pem,.cer,text/plain" onChange={(event) => void handleFileUpload(event.target.files?.[0] ?? null, "certificate")} />
-          </div>
-          <div className="field">
-            <span className="field-label">
-              Upload private key
-              <button type="button" className="help-tip" title="Upload a PEM private key file for tls.key." aria-label="Upload private key help">
-                ?
-              </button>
-            </span>
-            <input type="file" accept=".key,.pem,text/plain" onChange={(event) => void handleFileUpload(event.target.files?.[0] ?? null, "privateKey")} />
-          </div>
-          <TextAreaField label="Certificate" description="PEM-encoded certificate stored as tls.crt." value={form.certificate} onChange={(value) => update("certificate", value)} placeholder="-----BEGIN CERTIFICATE-----" rows={8} required />
-          <TextAreaField label="Private key" description="PEM-encoded private key stored as tls.key." value={form.privateKey} onChange={(value) => update("privateKey", value)} placeholder="-----BEGIN PRIVATE KEY-----" rows={8} required />
+          <SecretSourceField label="Certificate source" description="PEM-encoded certificate stored as tls.crt." source={certificateSource} onSourceChange={setCertificateSource} fileAccept=".crt,.pem,.cer,text/plain" onFileUpload={(file) => void handleFileUpload(file, "certificate")} textValue={form.certificate} onTextChange={(value) => update("certificate", value)} textPlaceholder="-----BEGIN CERTIFICATE-----" required />
+          <SecretSourceField label="Private key source" description="PEM-encoded private key stored as tls.key." source={privateKeySource} onSourceChange={setPrivateKeySource} fileAccept=".key,.pem,text/plain" onFileUpload={(file) => void handleFileUpload(file, "privateKey")} textValue={form.privateKey} onTextChange={(value) => update("privateKey", value)} textPlaceholder="-----BEGIN PRIVATE KEY-----" required />
         </div>
       </Section>
       ) : null}
@@ -2401,7 +2449,7 @@ export function SecretBuilderPanel({
       {form.secretType === "nginx.org/htpasswd" ? (
         <Section title="Htpasswd" description="Basic auth credentials stored under htpasswd" defaultOpen>
           <div className="builder-grid">
-            <TextAreaField label="Htpasswd" description="htpasswd file content." value={form.htpasswd} onChange={(value) => update("htpasswd", value)} placeholder="example: user:$apr1$..." rows={8} required />
+            <SecretSourceField label="Htpasswd source" description="htpasswd file content." source={htpasswdSource} onSourceChange={setHtpasswdSource} fileAccept=".htpasswd,.txt,text/plain" onFileUpload={(file) => void handleFileUpload(file, "htpasswd")} textValue={form.htpasswd} onTextChange={(value) => update("htpasswd", value)} textPlaceholder="example: user:$apr1$..." required />
           </div>
         </Section>
       ) : null}
@@ -2409,12 +2457,8 @@ export function SecretBuilderPanel({
       {form.secretType === "nginx.org/ca" ? (
         <Section title="CA Certificate" description="CA certificate and optional CRL for nginx.org/ca" defaultOpen>
           <div className="builder-grid">
-            <div className="field">
-              <span className="field-label">Upload CA certificate</span>
-              <input type="file" accept=".crt,.pem,.cer,text/plain" onChange={(event) => void handleFileUpload(event.target.files?.[0] ?? null, "caCertificate")} />
-            </div>
-            <TextAreaField label="CA certificate" description="PEM-encoded CA certificate stored as ca.crt." value={form.caCertificate} onChange={(value) => update("caCertificate", value)} placeholder="-----BEGIN CERTIFICATE-----" rows={8} required />
-            <TextAreaField label="Certificate revocation list" description="Optional CRL stored as ca.crl." value={form.caCrl} onChange={(value) => update("caCrl", value)} placeholder="optional PEM or CRL content" rows={6} />
+            <SecretSourceField label="CA certificate source" description="PEM-encoded CA certificate stored as ca.crt." source={caCertificateSource} onSourceChange={setCaCertificateSource} fileAccept=".crt,.pem,.cer,text/plain" onFileUpload={(file) => void handleFileUpload(file, "caCertificate")} textValue={form.caCertificate} onTextChange={(value) => update("caCertificate", value)} textPlaceholder="-----BEGIN CERTIFICATE-----" required />
+            <SecretSourceField label="CRL source" description="Optional CRL stored as ca.crl." source={caCrlSource} onSourceChange={setCaCrlSource} fileAccept=".crl,.pem,.txt,text/plain" onFileUpload={(file) => void handleFileUpload(file, "caCrl")} textValue={form.caCrl} onTextChange={(value) => update("caCrl", value)} textPlaceholder="optional PEM or CRL content" textRows={6} />
           </div>
         </Section>
       ) : null}
@@ -2430,11 +2474,7 @@ export function SecretBuilderPanel({
       {form.secretType === "nginx.org/jwk" ? (
         <Section title="JWT JWK" description="JWK content stored under jwk" defaultOpen>
           <div className="builder-grid">
-            <div className="field">
-              <span className="field-label">Upload JWK</span>
-              <input type="file" accept=".json,application/json,text/plain" onChange={(event) => void handleFileUpload(event.target.files?.[0] ?? null, "jwk")} />
-            </div>
-            <TextAreaField label="JWK" description="JSON Web Key or key set content." value={form.jwk} onChange={(value) => update("jwk", value)} placeholder='{"keys":[]}' rows={8} required />
+            <SecretSourceField label="JWK source" description="JSON Web Key or key set content." source={jwkSource} onSourceChange={setJwkSource} fileAccept=".json,application/json,text/plain" onFileUpload={(file) => void handleFileUpload(file, "jwk")} textValue={form.jwk} onTextChange={(value) => update("jwk", value)} textPlaceholder='{"keys":[]}' required />
           </div>
         </Section>
       ) : null}

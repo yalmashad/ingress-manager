@@ -296,6 +296,7 @@ function App() {
   const [transportServerForm, setTransportServerForm] = useState<TransportServerForm>(defaultTransportServerForm());
   const [virtualServerRouteForm, setVirtualServerRouteForm] = useState<VirtualServerRouteForm>(defaultVirtualServerRouteForm());
   const [createOverlay, setCreateOverlay] = useState<CreateOverlay | null>(null);
+  const [overlaySecretForm, setOverlaySecretForm] = useState<SecretForm>(defaultSecretForm());
   const [overlaySaving, setOverlaySaving] = useState(false);
   const skipManifestParseRef = useRef(false);
   const [selectedResourceKeys, setSelectedResourceKeys] = useState<string[]>([]);
@@ -589,12 +590,27 @@ function App() {
     kind: string,
     options?: { namespace?: string; onCreated?: (value: string) => void; initialManifest?: string },
   ) {
+    if (kind === "Secret" && options?.initialManifest) {
+      try {
+        setOverlaySecretForm(parseSecretManifest(YAML.parse(options.initialManifest) as Record<string, unknown>));
+      } catch {
+        const next = defaultSecretForm();
+        next.namespace = options.namespace ?? effectiveNamespace(createNamespace);
+        setOverlaySecretForm(next);
+      }
+    }
     setCreateOverlay({
       kind,
       manifestText: options?.initialManifest ?? starterManifest(kind, options?.namespace ?? effectiveNamespace(createNamespace)),
       onCreated: options?.onCreated,
     });
   }
+
+  useEffect(() => {
+    if (createOverlay?.kind !== "Secret") return;
+    const serialized = YAML.stringify(buildSecretManifest(overlaySecretForm));
+    setCreateOverlay((current) => (current && current.kind === "Secret" ? { ...current, manifestText: serialized } : current));
+  }, [createOverlay?.kind, overlaySecretForm]);
 
   async function saveManifest() {
     try {
@@ -1105,17 +1121,47 @@ function App() {
                     Cancel
                   </button>
                   <button className="primary" disabled={overlaySaving} onClick={() => void saveOverlayManifest()}>
-                    {appMode === "generator" ? (overlaySaving ? "Adding..." : "Add YAML") : (overlaySaving ? "Applying..." : "Apply")}
+                    {appMode === "generator"
+                      ? overlaySaving
+                        ? "Adding..."
+                        : createOverlay.kind === "Secret"
+                          ? "Add Secret"
+                          : "Add YAML"
+                      : overlaySaving
+                        ? "Applying..."
+                        : "Apply"}
                   </button>
                 </div>
               </div>
-              <textarea
-                className="manifest-editor overlay-editor"
-                value={createOverlay.manifestText}
-                onChange={(event) =>
-                  setCreateOverlay((current) => (current ? { ...current, manifestText: event.target.value } : current))
-                }
-              />
+              {createOverlay.kind === "Secret" ? (
+                <SecretBuilderPanel
+                  form={overlaySecretForm}
+                  setForm={setOverlaySecretForm}
+                  setManifestText={(value) =>
+                    setCreateOverlay((current) =>
+                      current
+                        ? {
+                            ...current,
+                            manifestText: typeof value === "function" ? value(current.manifestText) : value,
+                          }
+                        : current,
+                    )
+                  }
+                  setNotice={setNotice}
+                  clusterOptions={clusterOptions}
+                  onSubmitManifest={submitResourceManifest}
+                  onCreateResource={handleCreateRelatedResource}
+                  showApplyButton={false}
+                />
+              ) : (
+                <textarea
+                  className="manifest-editor overlay-editor"
+                  value={createOverlay.manifestText}
+                  onChange={(event) =>
+                    setCreateOverlay((current) => (current ? { ...current, manifestText: event.target.value } : current))
+                  }
+                />
+              )}
             </div>
           </div>
         )}

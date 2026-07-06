@@ -156,6 +156,7 @@ function simplifyResourceList(items: AnyRecord[]) {
     labels: item.metadata?.labels ?? {},
     state: item.status?.state ?? item.status?.phase ?? null,
     summary:
+      (item.kind === "Secret" ? item.type : null) ??
       item.spec?.host ??
       item.spec?.listener?.name ??
       item.spec?.listeners?.[0]?.name ??
@@ -171,17 +172,6 @@ function isTlsSecret(secret: AnyRecord) {
 
 function isTypedSecret(secret: AnyRecord, type: string) {
   return secret?.type === type;
-}
-
-function isIngressManagerSecret(secret: AnyRecord) {
-  return [
-    "kubernetes.io/tls",
-    "nginx.org/apikey",
-    "nginx.org/htpasswd",
-    "nginx.org/ca",
-    "nginx.org/oidc",
-    "nginx.org/jwk",
-  ].includes(secret?.type);
 }
 
 function summarizeNamedSecret(secret: AnyRecord) {
@@ -368,7 +358,7 @@ app.get("/api/overview", async (req, res) => {
       const labels = JSON.stringify(item.metadata?.labels ?? {}).toLowerCase();
       return name.includes("nginx") || labels.includes("nginx-ingress");
     });
-    const ingressSecretItems = ((secrets.items ?? []) as AnyRecord[]).filter(isIngressManagerSecret);
+    const secretItems = (secrets.items ?? []) as AnyRecord[];
 
     const [virtualServers, virtualServerRoutes, transportServers, policies, globalConfigurations] =
       await Promise.all([
@@ -395,7 +385,7 @@ app.get("/api/overview", async (req, res) => {
         TransportServer: simplifyResourceList(transportServers),
         Policy: simplifyResourceList(policies),
         GlobalConfiguration: simplifyResourceList(globalConfigurations),
-        Secret: simplifyResourceList(ingressSecretItems),
+        Secret: simplifyResourceList(secretItems),
       },
     });
   } catch (error) {
