@@ -332,14 +332,14 @@ function InlineSettingRow({
   multiline?: boolean;
 }) {
   return (
-    <div className={`settings-row ${multiline ? "multiline" : ""}`}>
-      <span className="settings-label">
+    <div className={`settings-table-row ${multiline ? "multiline" : ""}`}>
+      <span className="settings-table-label">
         {label}
         <button type="button" className="help-tip" title={description} aria-label={`${label}: ${description}`}>
           ?
         </button>
       </span>
-      <div className="settings-control">{children}</div>
+      <div className="settings-table-control">{children}</div>
     </div>
   );
 }
@@ -1113,18 +1113,18 @@ function UpstreamEditor({
       </div>
 
       <Section title="Service" description="Basic upstream identity and service mapping" defaultOpen>
-        <div className="builder-grid">
-          <TextField label="Name" description="Unique upstream name referenced by route actions." value={upstream.name} onChange={(value) => onChange({ ...upstream, name: value })} placeholder="app" required />
-          <TextField label="Service" description="Kubernetes Service that backs this upstream." value={upstream.service} onChange={(value) => onChange({ ...upstream, service: value })} placeholder="app-service" required />
-          <TextField label="Port" description="Service port exposed by the upstream." value={upstream.port} onChange={(value) => onChange({ ...upstream, port: value })} placeholder="80" required />
-          <SelectField label="Type" description="Protocol used between NGINX and the upstream service." value={upstream.type} onChange={(value) => onChange({ ...upstream, type: value })} options={["http", "grpc"]} />
-          <BooleanSelectField label="TLS to upstream" description="Send traffic to this upstream over TLS." value={upstream.tlsEnable} onChange={(value) => onChange({ ...upstream, tlsEnable: value })} />
-          <BooleanSelectField label="Use cluster IP" description="Send traffic to the Service ClusterIP instead of individual pod endpoints." value={upstream.useClusterIp} onChange={(value) => onChange({ ...upstream, useClusterIp: value })} />
+        <div className="settings-table">
+          <SettingsTextField label="Name" description="Unique upstream name referenced by route actions." value={upstream.name} onChange={(value) => onChange({ ...upstream, name: value })} placeholder="app" required />
+          <SettingsTextField label="Service" description="Kubernetes Service that backs this upstream." value={upstream.service} onChange={(value) => onChange({ ...upstream, service: value })} placeholder="app-service" required />
+          <SettingsTextField label="Port" description="Service port exposed by the upstream." value={upstream.port} onChange={(value) => onChange({ ...upstream, port: value })} placeholder="80" required />
+          <SettingsSelectField label="Type" description="Protocol used between NGINX and the upstream service." value={upstream.type} onChange={(value) => onChange({ ...upstream, type: value })} options={["http", "grpc"]} />
+          <SettingsBooleanField label="TLS to upstream" description="Send traffic to this upstream over TLS." value={upstream.tlsEnable} onChange={(value) => onChange({ ...upstream, tlsEnable: value })} />
+          <SettingsBooleanField label="Use cluster IP" description="Send traffic to the Service ClusterIP instead of individual pod endpoints." value={upstream.useClusterIp} onChange={(value) => onChange({ ...upstream, useClusterIp: value })} />
         </div>
       </Section>
 
       <Section title="Load Balancing" description="Retry logic and server selection">
-        <div className="settings-list">
+        <div className="settings-table">
           <InlineSettingRow label="LB method" description="Method NGINX uses to select a backend endpoint.">
             <select value={upstream.lbMethod} onChange={(event) => onChange({ ...upstream, lbMethod: event.target.value })}>
               {normalizeOptions(lbMethodOptions).map((option) => (
@@ -1159,7 +1159,7 @@ function UpstreamEditor({
       </Section>
 
       <Section title="Timeouts and Buffers" description="HTTP connection and buffering behavior">
-        <div className="settings-list">
+        <div className="settings-table">
           <InlineSettingRow label="Connect timeout" description="Time allowed to establish a backend connection. Default: from ConfigMap.">
             <input value={upstream.connectTimeout} onChange={(event) => onChange({ ...upstream, connectTimeout: event.target.value })} placeholder="default: from ConfigMap" />
           </InlineSettingRow>
@@ -1191,7 +1191,7 @@ function UpstreamEditor({
       </Section>
 
       <Section title="Health Check" description="NGINX Plus active health checks for this upstream">
-        <div className="settings-list">
+        <div className="settings-table">
           <InlineSettingRow label="Enable health check" description="Enable NGINX Plus active health checks for this upstream. Default: false.">
             <input type="checkbox" checked={healthCheck.enable} onChange={(event) => updateHealthCheck({ enable: event.target.checked })} />
           </InlineSettingRow>
@@ -1261,7 +1261,7 @@ function UpstreamEditor({
       </Section>
 
       <Section title="Session Persistence" description="Session persistence and endpoint selection">
-        <div className="settings-list">
+        <div className="settings-table">
           <InlineSettingRow label="Subselector labels" description="Pod labels used to narrow which endpoints join this upstream." multiline>
             <textarea rows={4} value={upstream.subselectorText} onChange={(event) => onChange({ ...upstream, subselectorText: event.target.value })} placeholder={"example: app=tea\ntrack=stable"} />
           </InlineSettingRow>
@@ -1308,6 +1308,7 @@ function RouteEditor({
   onRemove,
   clusterOptions,
   onCreateResource,
+  showLocationSnippets = true,
 }: {
   route: RouteForm;
   title: string;
@@ -1315,6 +1316,7 @@ function RouteEditor({
   onRemove?: () => void;
   clusterOptions: ClusterOptions;
   onCreateResource: (kind: string, options?: { namespace?: string; onCreated?: (value: string) => void }) => void;
+  showLocationSnippets?: boolean;
 }) {
   return (
     <div className="nested-card">
@@ -1328,101 +1330,127 @@ function RouteEditor({
       </div>
 
       <Section title="Route" description="Path matching and the action applied to matching requests" defaultOpen>
-        <div className="builder-grid">
-          <TextField label="Path" description="Route path, exact match, or regex pattern." value={route.path} onChange={(value) => onChange({ ...route, path: value })} placeholder="example: /tea or ~ ^/v[0-9]+/" required />
-          <SelectField label="Action type" description="Choose how requests matching this route should be handled." value={route.actionType} onChange={(value) => onChange(resetRouteForAction(route, value as RouteActionType))} options={routeActionOptions} required />
+        <div className="settings-table">
+          <SettingsTextField label="Path" description="Route path, exact match, or regex pattern." value={route.path} onChange={(value) => onChange({ ...route, path: value })} placeholder="example: /tea or ~ ^/v[0-9]+/" required />
+          <SettingsSelectField label="Action type" description="Choose how requests matching this route should be handled." value={route.actionType} onChange={(value) => onChange(resetRouteForAction(route, value as RouteActionType))} options={routeActionOptions} required />
           {route.actionType === "pass" ? (
-            <TextField label="Pass upstream" description="Upstream that receives matching requests." value={route.pass} onChange={(value) => onChange({ ...route, pass: value })} placeholder="example: tea" required />
+            <SettingsTextField label="Pass upstream" description="Upstream that receives matching requests." value={route.pass} onChange={(value) => onChange({ ...route, pass: value })} placeholder="example: tea" required />
           ) : null}
           {route.actionType === "proxy" ? (
             <>
-              <TextField label="Proxy upstream" description="Upstream that receives proxied requests." value={route.proxyUpstream} onChange={(value) => onChange({ ...route, proxyUpstream: value })} placeholder="example: api" required />
-              <TextField label="Rewrite path" description="Optional rewritten URI sent to the upstream." value={route.rewritePath} onChange={(value) => onChange({ ...route, rewritePath: value })} placeholder="example: /v1/$1" />
+              <SettingsTextField label="Proxy upstream" description="Upstream that receives proxied requests." value={route.proxyUpstream} onChange={(value) => onChange({ ...route, proxyUpstream: value })} placeholder="example: api" required />
+              <SettingsTextField label="Rewrite path" description="Optional rewritten URI sent to the upstream." value={route.rewritePath} onChange={(value) => onChange({ ...route, rewritePath: value })} placeholder="example: /v1/$1" />
             </>
           ) : null}
           {route.actionType === "redirect" ? (
             <>
-              <TextField label="Redirect URL" description="Destination URL returned in the redirect response." value={route.redirectUrl} onChange={(value) => onChange({ ...route, redirectUrl: value })} placeholder="example: https://www.example.com$request_uri" />
-              <SelectField label="Redirect code" description="HTTP status code used for redirects." value={route.redirectCode} onChange={(value) => onChange({ ...route, redirectCode: value })} options={tlsRedirectCodeOptions} />
+              <SettingsTextField label="Redirect URL" description="Destination URL returned in the redirect response." value={route.redirectUrl} onChange={(value) => onChange({ ...route, redirectUrl: value })} placeholder="example: https://www.example.com$request_uri" />
+              <SettingsSelectField label="Redirect code" description="HTTP status code used for redirects." value={route.redirectCode} onChange={(value) => onChange({ ...route, redirectCode: value })} options={tlsRedirectCodeOptions} />
             </>
           ) : null}
           {route.actionType === "return" ? (
             <>
-              <TextField label="Return code" description="HTTP status code returned directly by NGINX." value={route.returnCode} onChange={(value) => onChange({ ...route, returnCode: value })} placeholder="example: 200" />
-              <TextField label="Return type" description="MIME type of the custom response body." value={route.returnType} onChange={(value) => onChange({ ...route, returnType: value })} placeholder="example: application/json" />
-              <TextAreaField label="Return body" description="Literal response body returned by NGINX." value={route.returnBody} onChange={(value) => onChange({ ...route, returnBody: value })} placeholder='example: {"message":"ok"}' />
+              <SettingsTextField label="Return code" description="HTTP status code returned directly by NGINX." value={route.returnCode} onChange={(value) => onChange({ ...route, returnCode: value })} placeholder="example: 200" />
+              <SettingsTextField label="Return type" description="MIME type of the custom response body." value={route.returnType} onChange={(value) => onChange({ ...route, returnType: value })} placeholder="example: application/json" />
+              <SettingsTextAreaField label="Return body" description="Literal response body returned by NGINX." value={route.returnBody} onChange={(value) => onChange({ ...route, returnBody: value })} placeholder='example: {"message":"ok"}' />
             </>
           ) : null}
-          <DosField value={route.dos} onChange={(value) => onChange({ ...route, dos: value })} clusterOptions={clusterOptions} onCreateResource={onCreateResource} />
-          <TextAreaField label="Route selector" description="Advanced selector used when automatically including VirtualServerRoutes." value={route.routeSelectorText} onChange={(value) => onChange({ ...route, routeSelectorText: value })} placeholder={"example:\nmatchLabels:\n  app: cafe"} rows={5} />
+          <SettingsSelectField
+            label="DOS resource"
+            description="Reference an App Protect DoS resource for this route."
+            value={route.dos}
+            onChange={(value) => {
+              if (value === createDosValue) {
+                onCreateResource("DosProtectedResource", { onCreated: (created) => onChange({ ...route, dos: created }) });
+                return;
+              }
+              onChange({ ...route, dos: value });
+            }}
+            options={resourceOptions(clusterOptions.dosResources, createDosValue, "Create new DOS resource...")}
+          />
+          <SettingsSelectField
+            label="Route policy refs"
+            description="Attach a Policy resource to this route."
+            value={route.policyRefsText}
+            onChange={(value) => {
+              if (value === createPolicyValue) {
+                onCreateResource("Policy", { onCreated: (created) => onChange({ ...route, policyRefsText: created }) });
+                return;
+              }
+              onChange({ ...route, policyRefsText: value });
+            }}
+            options={resourceOptions(clusterOptions.policies, createPolicyValue, "Create new Policy...")}
+          />
+          <SettingsTextAreaField label="Route selector" description="Advanced selector used when automatically including VirtualServerRoutes." value={route.routeSelectorText} onChange={(value) => onChange({ ...route, routeSelectorText: value })} placeholder={"example:\nmatchLabels:\n  app: cafe"} rows={5} />
         </div>
-        <PolicyRefsField value={route.policyRefsText} onChange={(value) => onChange({ ...route, policyRefsText: value })} clusterOptions={clusterOptions} onCreateResource={onCreateResource} label="Route policy refs" />
       </Section>
 
       <Section title="Matches" description="Optional content-based header match rule">
-        <div className="builder-grid">
-          <SelectField label="Condition type" description="Condition source used by this match rule." value={route.matchConditionType} onChange={(value) => onChange({ ...route, matchConditionType: value as RouteForm["matchConditionType"] })} options={["header", "cookie", "argument", "variable"]} />
-          <TextField label="Condition name" description="Header, cookie, argument, or variable name used by the match condition." value={route.matchConditionName} onChange={(value) => onChange({ ...route, matchConditionName: value })} placeholder={route.matchConditionType === "variable" ? "example: $request_method" : "example: user"} />
-          <TextField label="Condition value" description="Value to compare against, including exact or regex-based matches." value={route.matchValue} onChange={(value) => onChange({ ...route, matchValue: value })} placeholder="example: john or ~*^mobile" />
-          <SelectField label="Match action" description="Action used when this match rule succeeds." value={route.matchActionType} onChange={(value) => onChange({ ...route, matchActionType: value as RouteForm["matchActionType"] })} options={routeActionOptions} />
+        <div className="settings-table">
+          <SettingsSelectField label="Condition type" description="Condition source used by this match rule." value={route.matchConditionType} onChange={(value) => onChange({ ...route, matchConditionType: value as RouteForm["matchConditionType"] })} options={["header", "cookie", "argument", "variable"]} />
+          <SettingsTextField label="Condition name" description="Header, cookie, argument, or variable name used by the match condition." value={route.matchConditionName} onChange={(value) => onChange({ ...route, matchConditionName: value })} placeholder={route.matchConditionType === "variable" ? "example: $request_method" : "example: user"} />
+          <SettingsTextField label="Condition value" description="Value to compare against, including exact or regex-based matches." value={route.matchValue} onChange={(value) => onChange({ ...route, matchValue: value })} placeholder="example: john or ~*^mobile" />
+          <SettingsSelectField label="Match action" description="Action used when this match rule succeeds." value={route.matchActionType} onChange={(value) => onChange({ ...route, matchActionType: value as RouteForm["matchActionType"] })} options={routeActionOptions} />
           {route.matchActionType === "pass" ? (
-            <TextField label="Match pass upstream" description="Upstream used when the match succeeds." value={route.matchActionPass} onChange={(value) => onChange({ ...route, matchActionPass: value })} placeholder="example: mobile-app" />
+            <SettingsTextField label="Match pass upstream" description="Upstream used when the match succeeds." value={route.matchActionPass} onChange={(value) => onChange({ ...route, matchActionPass: value })} placeholder="example: mobile-app" />
           ) : null}
           {route.matchActionType === "proxy" ? (
             <>
-              <TextField label="Match proxy upstream" description="Upstream used for a proxy action when the match succeeds." value={route.matchProxyUpstream} onChange={(value) => onChange({ ...route, matchProxyUpstream: value })} placeholder="example: mobile-app" />
-              <TextField label="Match rewrite path" description="Optional rewritten URI sent upstream for the match action." value={route.matchRewritePath} onChange={(value) => onChange({ ...route, matchRewritePath: value })} placeholder="example: /m/$1" />
+              <SettingsTextField label="Match proxy upstream" description="Upstream used for a proxy action when the match succeeds." value={route.matchProxyUpstream} onChange={(value) => onChange({ ...route, matchProxyUpstream: value })} placeholder="example: mobile-app" />
+              <SettingsTextField label="Match rewrite path" description="Optional rewritten URI sent upstream for the match action." value={route.matchRewritePath} onChange={(value) => onChange({ ...route, matchRewritePath: value })} placeholder="example: /m/$1" />
             </>
           ) : null}
           {route.matchActionType === "redirect" ? (
             <>
-              <TextField label="Match redirect URL" description="Redirect destination used when the match succeeds." value={route.matchRedirectUrl} onChange={(value) => onChange({ ...route, matchRedirectUrl: value })} placeholder="example: https://m.example.com$request_uri" />
-              <SelectField label="Match redirect code" description="Redirect status code used for the match action." value={route.matchRedirectCode} onChange={(value) => onChange({ ...route, matchRedirectCode: value })} options={tlsRedirectCodeOptions} />
+              <SettingsTextField label="Match redirect URL" description="Redirect destination used when the match succeeds." value={route.matchRedirectUrl} onChange={(value) => onChange({ ...route, matchRedirectUrl: value })} placeholder="example: https://m.example.com$request_uri" />
+              <SettingsSelectField label="Match redirect code" description="Redirect status code used for the match action." value={route.matchRedirectCode} onChange={(value) => onChange({ ...route, matchRedirectCode: value })} options={tlsRedirectCodeOptions} />
             </>
           ) : null}
           {route.matchActionType === "return" ? (
             <>
-              <TextField label="Match return code" description="HTTP status returned when the match succeeds." value={route.matchReturnCode} onChange={(value) => onChange({ ...route, matchReturnCode: value })} placeholder="example: 200" />
-              <TextField label="Match return type" description="MIME type of the returned body." value={route.matchReturnType} onChange={(value) => onChange({ ...route, matchReturnType: value })} placeholder="example: application/json" />
-              <TextAreaField label="Match return body" description="Literal body returned when the match succeeds." value={route.matchReturnBody} onChange={(value) => onChange({ ...route, matchReturnBody: value })} placeholder='example: {"message":"ok"}' />
+              <SettingsTextField label="Match return code" description="HTTP status returned when the match succeeds." value={route.matchReturnCode} onChange={(value) => onChange({ ...route, matchReturnCode: value })} placeholder="example: 200" />
+              <SettingsTextField label="Match return type" description="MIME type of the returned body." value={route.matchReturnType} onChange={(value) => onChange({ ...route, matchReturnType: value })} placeholder="example: application/json" />
+              <SettingsTextAreaField label="Match return body" description="Literal body returned when the match succeeds." value={route.matchReturnBody} onChange={(value) => onChange({ ...route, matchReturnBody: value })} placeholder='example: {"message":"ok"}' />
             </>
           ) : null}
         </div>
       </Section>
 
       <Section title="Splits" description="Optional two-way traffic split between upstreams">
-        <div className="builder-grid">
-          <TextField label="Primary weight" description="Traffic percentage or weight for the primary upstream." value={route.splitPrimaryWeight} onChange={(value) => onChange({ ...route, splitPrimaryWeight: value })} placeholder="example: 80" />
-          <TextField label="Primary upstream" description="Upstream name used for the primary share." value={route.splitPrimaryPass} onChange={(value) => onChange({ ...route, splitPrimaryPass: value })} placeholder="example: stable" />
-          <TextField label="Secondary weight" description="Traffic percentage or weight for the secondary upstream." value={route.splitSecondaryWeight} onChange={(value) => onChange({ ...route, splitSecondaryWeight: value })} placeholder="example: 20" />
-          <TextField label="Secondary upstream" description="Upstream name used for the secondary share." value={route.splitSecondaryPass} onChange={(value) => onChange({ ...route, splitSecondaryPass: value })} placeholder="example: canary" />
+        <div className="settings-table">
+          <SettingsTextField label="Primary weight" description="Traffic percentage or weight for the primary upstream." value={route.splitPrimaryWeight} onChange={(value) => onChange({ ...route, splitPrimaryWeight: value })} placeholder="example: 80" />
+          <SettingsTextField label="Primary upstream" description="Upstream name used for the primary share." value={route.splitPrimaryPass} onChange={(value) => onChange({ ...route, splitPrimaryPass: value })} placeholder="example: stable" />
+          <SettingsTextField label="Secondary weight" description="Traffic percentage or weight for the secondary upstream." value={route.splitSecondaryWeight} onChange={(value) => onChange({ ...route, splitSecondaryWeight: value })} placeholder="example: 20" />
+          <SettingsTextField label="Secondary upstream" description="Upstream name used for the secondary share." value={route.splitSecondaryPass} onChange={(value) => onChange({ ...route, splitSecondaryPass: value })} placeholder="example: canary" />
         </div>
       </Section>
 
       <Section title="Error Pages" description="Custom redirect or response for selected error codes">
-        <div className="builder-grid">
-          <TextAreaField label="Error codes" description="Status codes that should trigger this custom error handling." value={route.errorCodes} onChange={(value) => onChange({ ...route, errorCodes: value })} placeholder="example: 404&#10;500" />
-          <SelectField label="Error action type" description="Choose whether matching errors should redirect or return a custom response." value={route.errorActionType} onChange={(value) => onChange({ ...route, errorActionType: value as RouteForm["errorActionType"] })} options={errorActionOptions} />
+        <div className="settings-table">
+          <SettingsTextAreaField label="Error codes" description="Status codes that should trigger this custom error handling." value={route.errorCodes} onChange={(value) => onChange({ ...route, errorCodes: value })} placeholder="example: 404&#10;500" />
+          <SettingsSelectField label="Error action type" description="Choose whether matching errors should redirect or return a custom response." value={route.errorActionType} onChange={(value) => onChange({ ...route, errorActionType: value as RouteForm["errorActionType"] })} options={errorActionOptions} />
           {route.errorActionType === "redirect" ? (
             <>
-              <SelectField label="Redirect code" description="HTTP redirect status code returned for matching errors." value={route.errorRedirectCode} onChange={(value) => onChange({ ...route, errorRedirectCode: value })} options={tlsRedirectCodeOptions} />
-              <TextField label="Redirect URL" description="URL returned when these errors occur." value={route.errorRedirectUrl} onChange={(value) => onChange({ ...route, errorRedirectUrl: value })} placeholder="example: /error.html" />
+              <SettingsSelectField label="Redirect code" description="HTTP redirect status code returned for matching errors." value={route.errorRedirectCode} onChange={(value) => onChange({ ...route, errorRedirectCode: value })} options={tlsRedirectCodeOptions} />
+              <SettingsTextField label="Redirect URL" description="URL returned when these errors occur." value={route.errorRedirectUrl} onChange={(value) => onChange({ ...route, errorRedirectUrl: value })} placeholder="example: /error.html" />
             </>
           ) : (
             <>
-              <TextField label="Return code" description="Status code returned with the custom error body." value={route.errorReturnCode} onChange={(value) => onChange({ ...route, errorReturnCode: value })} placeholder="example: 200" />
-              <TextField label="Return type" description="MIME type of the custom error body." value={route.errorReturnType} onChange={(value) => onChange({ ...route, errorReturnType: value })} placeholder="example: application/json" />
-              <TextAreaField label="Return body" description="Literal body returned for the selected error codes." value={route.errorReturnBody} onChange={(value) => onChange({ ...route, errorReturnBody: value })} placeholder='example: {"message":"fallback"}' />
+              <SettingsTextField label="Return code" description="Status code returned with the custom error body." value={route.errorReturnCode} onChange={(value) => onChange({ ...route, errorReturnCode: value })} placeholder="example: 200" />
+              <SettingsTextField label="Return type" description="MIME type of the custom error body." value={route.errorReturnType} onChange={(value) => onChange({ ...route, errorReturnType: value })} placeholder="example: application/json" />
+              <SettingsTextAreaField label="Return body" description="Literal body returned for the selected error codes." value={route.errorReturnBody} onChange={(value) => onChange({ ...route, errorReturnBody: value })} placeholder='example: {"message":"fallback"}' />
             </>
           )}
         </div>
       </Section>
 
-      <Section title="Snippets" description="Location-level raw NGINX directives for this route">
-        <div className="builder-grid">
-          <TextAreaField label="Location snippets" description="Custom directives injected into the location block for this route." value={route.locationSnippets} onChange={(value) => onChange({ ...route, locationSnippets: value })} placeholder="" />
-        </div>
-      </Section>
+      {showLocationSnippets ? (
+        <Section title="Snippets" description="Location-level raw NGINX directives for this route">
+          <div className="settings-table">
+            <SettingsTextAreaField label="Location snippets" description="Custom directives injected into the location block for this route." value={route.locationSnippets} onChange={(value) => onChange({ ...route, locationSnippets: value })} placeholder="" />
+          </div>
+        </Section>
+      ) : null}
     </div>
   );
 }
@@ -1439,7 +1467,7 @@ function PolicyTypeField({
   selected: boolean;
 }) {
   return (
-    <SelectField
+    <SettingsSelectField
       label="Policy type"
       description={selected ? policyTypeDescriptions[form.policyType] : "Choose the single policy type this resource will define."}
       value={selected ? form.policyType : ""}
@@ -1822,9 +1850,9 @@ export function PolicyBuilderPanel({
       </div>
 
       <Section title="General" description="Identity, namespace, and policy category" defaultOpen>
-        <div className="builder-grid">
-          <TextField label="Name" description="The Kubernetes name of this Policy resource." value={form.name} onChange={(value) => update("name", value)} placeholder="policy-name" required />
-          <NamespaceField value={form.namespace} onChange={(value) => update("namespace", value)} clusterOptions={clusterOptions} />
+        <div className="settings-table">
+          <SettingsTextField label="Name" description="The Kubernetes name of this Policy resource." value={form.name} onChange={(value) => update("name", value)} placeholder="policy-name" required />
+          <SettingsNamespaceField value={form.namespace} onChange={(value) => update("namespace", value)} clusterOptions={clusterOptions} />
           <PolicyTypeField form={form} setForm={setForm} onSelected={() => setPolicyTypeSelected(true)} selected={policyTypeSelected} />
         </div>
       </Section>
@@ -1935,16 +1963,16 @@ export function VirtualServerBuilderPanel({
       </Section>
 
       <Section title="Custom Listeners" description="Custom listener names defined through GlobalConfiguration">
-        <div className="builder-grid">
-          <SelectField label="HTTP listener" description="HTTP listener name from a GlobalConfiguration resource." value={form.listenerHttp} onChange={(value) => value === createListenerValue ? onCreateResource("GlobalConfiguration", { onCreated: (created) => update("listenerHttp", created) }) : update("listenerHttp", value)} options={listenerOptions(clusterOptions)} />
-          <SelectField label="HTTPS listener" description="HTTPS listener name from a GlobalConfiguration resource." value={form.listenerHttps} onChange={(value) => value === createListenerValue ? onCreateResource("GlobalConfiguration", { onCreated: (created) => update("listenerHttps", created) }) : update("listenerHttps", value)} options={listenerOptions(clusterOptions)} />
+        <div className="settings-table">
+          <SettingsSelectField label="HTTP listener" description="HTTP listener name from a GlobalConfiguration resource." value={form.listenerHttp} onChange={(value) => value === createListenerValue ? onCreateResource("GlobalConfiguration", { onCreated: (created) => update("listenerHttp", created) }) : update("listenerHttp", value)} options={listenerOptions(clusterOptions)} />
+          <SettingsSelectField label="HTTPS listener" description="HTTPS listener name from a GlobalConfiguration resource." value={form.listenerHttps} onChange={(value) => value === createListenerValue ? onCreateResource("GlobalConfiguration", { onCreated: (created) => update("listenerHttps", created) }) : update("listenerHttps", value)} options={listenerOptions(clusterOptions)} />
         </div>
       </Section>
 
       <Section title="TLS" description="Choose a valid same-namespace TLS secret or create a new one, then configure redirect and certificate automation">
-        <div className="builder-grid">
+        <div className="settings-table">
           {usesCertManager ? (
-            <TextField
+            <SettingsTextField
               label="TLS secret name"
               description="Name of the same-namespace kubernetes.io/tls secret that cert-manager should create and keep updated for this VirtualServer."
               value={form.tlsSecret}
@@ -1953,7 +1981,7 @@ export function VirtualServerBuilderPanel({
               required
             />
           ) : (
-            <SelectField
+            <SettingsSelectField
               label="TLS secret"
               description="Select a same-namespace secret of type kubernetes.io/tls with tls.crt and tls.key."
               value={form.tlsSecret}
@@ -1970,34 +1998,29 @@ export function VirtualServerBuilderPanel({
               options={[{ value: "", label: "None" }, ...sameNamespaceTlsSecrets, { value: createTlsSecretValue, label: "Create Secret" }]}
             />
           )}
-          <div className="field checkbox-field">
-            <span className="field-label field-label-placeholder" aria-hidden="true">
-              Placeholder
-            </span>
-            <BooleanSelectField
-              label="Enable TLS redirect"
-              description="Redirect HTTP requests to HTTPS."
-              value={form.tlsRedirectEnable}
-              onChange={(value) => {
-                setForm((current) => ({
-                  ...current,
-                  tlsRedirectEnable: value,
-                  tlsRedirectCode: value ? current.tlsRedirectCode || "301" : "",
-                  tlsRedirectBasedOn: value ? current.tlsRedirectBasedOn || "scheme" : "",
-                }));
-              }}
-            />
-          </div>
+          <SettingsBooleanField
+            label="Enable TLS redirect"
+            description="Redirect HTTP requests to HTTPS."
+            value={form.tlsRedirectEnable}
+            onChange={(value) => {
+              setForm((current) => ({
+                ...current,
+                tlsRedirectEnable: value,
+                tlsRedirectCode: value ? current.tlsRedirectCode || "301" : "",
+                tlsRedirectBasedOn: value ? current.tlsRedirectBasedOn || "scheme" : "",
+              }));
+            }}
+          />
           {form.tlsRedirectEnable ? (
             <>
-              <SelectField
+              <SettingsSelectField
                 label="TLS redirect code"
                 description="HTTP status code used for HTTP-to-HTTPS redirects."
                 value={form.tlsRedirectCode}
                 onChange={(value) => update("tlsRedirectCode", value)}
                 options={tlsRedirectCodeOptions}
               />
-              <SelectField
+              <SettingsSelectField
                 label="Redirect based on"
                 description="Request attribute used before redirecting to HTTPS."
                 value={form.tlsRedirectBasedOn}
@@ -2006,27 +2029,25 @@ export function VirtualServerBuilderPanel({
               />
             </>
           ) : null}
-          <div className="grid-span-2">
-            <BooleanSelectField
-              label="Certificate automation"
-              description="Use cert-manager to issue and renew the certificate for this VirtualServer."
-              value={certManagerEnabled}
-              onChange={(value) => {
-                setCertManagerEnabled(value);
-                setForm((current) => ({
-                  ...current,
-                  tlsSecret: value ? current.tlsSecret || `${current.name || "virtualserver"}-tls` : current.tlsSecret,
-                  certIssuer: value && certManagerMode === "issuer" ? current.certIssuer : "",
-                  certClusterIssuer: value && certManagerMode === "clusterIssuer" ? current.certClusterIssuer : "",
-                  certIssuerKind: "",
-                  certIssuerGroup: "",
-                }));
-              }}
-            />
-          </div>
+          <SettingsBooleanField
+            label="Certificate automation"
+            description="Use cert-manager to issue and renew the certificate for this VirtualServer."
+            value={certManagerEnabled}
+            onChange={(value) => {
+              setCertManagerEnabled(value);
+              setForm((current) => ({
+                ...current,
+                tlsSecret: value ? current.tlsSecret || `${current.name || "virtualserver"}-tls` : current.tlsSecret,
+                certIssuer: value && certManagerMode === "issuer" ? current.certIssuer : "",
+                certClusterIssuer: value && certManagerMode === "clusterIssuer" ? current.certClusterIssuer : "",
+                certIssuerKind: "",
+                certIssuerGroup: "",
+              }));
+            }}
+          />
           {certManagerEnabled ? (
             <>
-              <SelectField
+              <SettingsSelectField
                 label="Certificate source"
                 description="Choose whether cert-manager should use a namespace Issuer or a cluster-wide ClusterIssuer."
                 value={certManagerMode}
@@ -2048,8 +2069,8 @@ export function VirtualServerBuilderPanel({
               />
             </>
           ) : null}
-          {certManagerEnabled && certManagerMode === "issuer" ? <TextField label="Issuer name" description="Namespace-scoped cert-manager Issuer name." value={form.certIssuer} onChange={(value) => update("certIssuer", value)} placeholder="example: letsencrypt" /> : null}
-          {certManagerEnabled && certManagerMode === "clusterIssuer" ? <TextField label="ClusterIssuer name" description="ClusterIssuer name for cert-manager." value={form.certClusterIssuer} onChange={(value) => update("certClusterIssuer", value)} placeholder="example: letsencrypt-prod" /> : null}
+          {certManagerEnabled && certManagerMode === "issuer" ? <SettingsTextField label="Issuer name" description="Namespace-scoped cert-manager Issuer name." value={form.certIssuer} onChange={(value) => update("certIssuer", value)} placeholder="example: letsencrypt" /> : null}
+          {certManagerEnabled && certManagerMode === "clusterIssuer" ? <SettingsTextField label="ClusterIssuer name" description="ClusterIssuer name for cert-manager." value={form.certClusterIssuer} onChange={(value) => update("certClusterIssuer", value)} placeholder="example: letsencrypt-prod" /> : null}
         </div>
       </Section>
 
@@ -2086,6 +2107,7 @@ export function VirtualServerBuilderPanel({
             onRemove={form.routes.length > 1 ? () => update("routes", form.routes.filter((_, itemIndex) => itemIndex !== index)) : undefined}
             clusterOptions={clusterOptions}
             onCreateResource={onCreateResource}
+            showLocationSnippets={false}
           />
         ))}
       </Section>
@@ -2094,6 +2116,16 @@ export function VirtualServerBuilderPanel({
         <div className="builder-grid">
           <TextAreaField label="HTTP snippets" description="Directives injected into the NGINX http context." value={form.httpSnippets} onChange={(value) => update("httpSnippets", value)} placeholder="" />
           <TextAreaField label="Server snippets" description="Directives injected into the NGINX server block." value={form.serverSnippets} onChange={(value) => update("serverSnippets", value)} placeholder="" />
+          {form.routes.map((route, index) => (
+            <TextAreaField
+              key={`location-snippets-${index}`}
+              label={`Location snippets (${route.path || `Route ${index + 1}`})`}
+              description="Custom directives injected into this route location block."
+              value={route.locationSnippets}
+              onChange={(value) => update("routes", updateAtIndex(form.routes, index, { ...route, locationSnippets: value }))}
+              placeholder=""
+            />
+          ))}
         </div>
       </Section>
     </div>
@@ -2123,13 +2155,13 @@ function ListenerEditor({
           </button>
         ) : null}
       </div>
-      <div className="builder-grid">
-        <TextField label="Name" description="Unique listener name referenced by VirtualServer or TransportServer resources." value={listener.name} onChange={(value) => onChange({ ...listener, name: value })} placeholder="example: http-8083" required />
-        <TextField label="Port" description="Port where NGINX should listen." value={listener.port} onChange={(value) => onChange({ ...listener, port: value })} placeholder="example: 80" required />
-        <SelectField label="Protocol" description="Listener protocol." value={listener.protocol} onChange={(value) => onChange({ ...listener, protocol: value as GlobalConfigurationListenerForm["protocol"] })} options={listenerProtocolOptions} required />
-        <BooleanSelectField label="SSL enabled" description="Mark this listener as SSL/TLS-capable." value={listener.ssl} onChange={(value) => onChange({ ...listener, ssl: value })} />
-        <TextField label="IPv4 address" description="Optional IPv4 address to bind to." value={listener.ipv4} onChange={(value) => onChange({ ...listener, ipv4: value })} placeholder="example: 0.0.0.0" />
-        <TextField label="IPv6 address" description="Optional IPv6 address to bind to." value={listener.ipv6} onChange={(value) => onChange({ ...listener, ipv6: value })} placeholder="example: ::" />
+      <div className="settings-table">
+        <SettingsTextField label="Name" description="Unique listener name referenced by VirtualServer or TransportServer resources." value={listener.name} onChange={(value) => onChange({ ...listener, name: value })} placeholder="example: http-8083" required />
+        <SettingsTextField label="Port" description="Port where NGINX should listen." value={listener.port} onChange={(value) => onChange({ ...listener, port: value })} placeholder="example: 80" required />
+        <SettingsSelectField label="Protocol" description="Listener protocol." value={listener.protocol} onChange={(value) => onChange({ ...listener, protocol: value as GlobalConfigurationListenerForm["protocol"] })} options={listenerProtocolOptions} required />
+        <SettingsBooleanField label="SSL enabled" description="Mark this listener as SSL/TLS-capable." value={listener.ssl} onChange={(value) => onChange({ ...listener, ssl: value })} />
+        <SettingsTextField label="IPv4 address" description="Optional IPv4 address to bind to." value={listener.ipv4} onChange={(value) => onChange({ ...listener, ipv4: value })} placeholder="example: 0.0.0.0" />
+        <SettingsTextField label="IPv6 address" description="Optional IPv6 address to bind to." value={listener.ipv6} onChange={(value) => onChange({ ...listener, ipv6: value })} placeholder="example: ::" />
       </div>
     </div>
   );
@@ -2159,9 +2191,9 @@ export function GlobalConfigurationBuilderPanel({
       </div>
 
       <Section title="General" description="Resource identity and namespace" defaultOpen>
-        <div className="builder-grid">
-          <TextField label="Name" description="The Kubernetes name of this GlobalConfiguration." value={form.name} onChange={(value) => update("name", value)} placeholder="example: nginx-global" required />
-          <NamespaceField value={form.namespace} onChange={(value) => update("namespace", value)} clusterOptions={clusterOptions} />
+        <div className="settings-table">
+          <SettingsTextField label="Name" description="The Kubernetes name of this GlobalConfiguration." value={form.name} onChange={(value) => update("name", value)} placeholder="example: nginx-global" required />
+          <SettingsNamespaceField value={form.namespace} onChange={(value) => update("namespace", value)} clusterOptions={clusterOptions} />
         </div>
       </Section>
 
@@ -2210,25 +2242,25 @@ function TransportUpstreamEditor({
           </button>
         ) : null}
       </div>
-        <div className="builder-grid">
-        <TextField label="Name" description="Unique upstream identifier used by the TransportServer action." value={upstream.name} onChange={(value) => onChange({ ...upstream, name: value })} placeholder="example: tcp-app" required />
-        <TextField label="Service" description="Kubernetes Service that backs this stream upstream." value={upstream.service} onChange={(value) => onChange({ ...upstream, service: value })} placeholder="example: tcp-service" required />
-        <TextField label="Port" description="Service port exposed by the stream backend." value={upstream.port} onChange={(value) => onChange({ ...upstream, port: value })} placeholder="example: 9000" required />
-        <TextField label="Backup service" description="Optional backup Service used when the primary service is unavailable." value={upstream.backup} onChange={(value) => onChange({ ...upstream, backup: value })} placeholder="example: backup-service" />
-        <TextField label="Backup port" description="Port exposed by the backup Service." value={upstream.backupPort} onChange={(value) => onChange({ ...upstream, backupPort: value })} placeholder="example: 9001" />
-        <SelectField label="LB method" description="Method used to distribute stream traffic." value={upstream.loadBalancingMethod} onChange={(value) => onChange({ ...upstream, loadBalancingMethod: value })} options={lbMethodOptions} />
-        <TextField label="Max fails" description="Failures before an endpoint is marked unavailable." value={upstream.maxFails} onChange={(value) => onChange({ ...upstream, maxFails: value })} placeholder="default: 1" />
-        <TextField label="Fail timeout" description="Time window used with max fails." value={upstream.failTimeout} onChange={(value) => onChange({ ...upstream, failTimeout: value })} placeholder="default: 10s" />
-        <TextField label="Max conns" description="Maximum simultaneous connections to this backend." value={upstream.maxConns} onChange={(value) => onChange({ ...upstream, maxConns: value })} placeholder="default: 0" />
-        <ToggleField label="Enable health check" description="Enable NGINX Plus stream health checks for this upstream." checked={healthCheck.enable} onChange={(value) => updateHealthCheck({ enable: value })} />
-        <TextField label="Interval" description="Time between consecutive stream health checks." value={healthCheck.interval} onChange={(value) => updateHealthCheck({ interval: value })} placeholder="default: 5s" />
-        <TextField label="Jitter" description="Random delay applied to each health check." value={healthCheck.jitter} onChange={(value) => updateHealthCheck({ jitter: value })} placeholder="default: no delay" />
-        <TextField label="Fails" description="Consecutive failed checks before marking the endpoint unhealthy." value={healthCheck.fails} onChange={(value) => updateHealthCheck({ fails: value })} placeholder="default: 1" />
-        <TextField label="Passes" description="Consecutive successful checks before marking the endpoint healthy." value={healthCheck.passes} onChange={(value) => updateHealthCheck({ passes: value })} placeholder="default: 1" />
-        <TextField label="Port" description="Port used for stream health checks." value={healthCheck.port} onChange={(value) => updateHealthCheck({ port: value })} placeholder="default: upstream port" />
-        <TextField label="Connect timeout" description="Time allowed to connect during a health check." value={healthCheck.connectTimeout} onChange={(value) => updateHealthCheck({ connectTimeout: value })} placeholder="default: 5s" />
-        <TextField label="Match send" description="Payload sent during a stream health check match block." value={healthCheck.matchSend} onChange={(value) => updateHealthCheck({ matchSend: value })} placeholder="example: ping" />
-        <TextField label="Match expect" description="Expected response payload for the health check match block." value={healthCheck.matchExpect} onChange={(value) => updateHealthCheck({ matchExpect: value })} placeholder="example: pong" />
+      <div className="settings-table">
+        <SettingsTextField label="Name" description="Unique upstream identifier used by the TransportServer action." value={upstream.name} onChange={(value) => onChange({ ...upstream, name: value })} placeholder="example: tcp-app" required />
+        <SettingsTextField label="Service" description="Kubernetes Service that backs this stream upstream." value={upstream.service} onChange={(value) => onChange({ ...upstream, service: value })} placeholder="example: tcp-service" required />
+        <SettingsTextField label="Port" description="Service port exposed by the stream backend." value={upstream.port} onChange={(value) => onChange({ ...upstream, port: value })} placeholder="example: 9000" required />
+        <SettingsTextField label="Backup service" description="Optional backup Service used when the primary service is unavailable." value={upstream.backup} onChange={(value) => onChange({ ...upstream, backup: value })} placeholder="example: backup-service" />
+        <SettingsTextField label="Backup port" description="Port exposed by the backup Service." value={upstream.backupPort} onChange={(value) => onChange({ ...upstream, backupPort: value })} placeholder="example: 9001" />
+        <SettingsSelectField label="LB method" description="Method used to distribute stream traffic." value={upstream.loadBalancingMethod} onChange={(value) => onChange({ ...upstream, loadBalancingMethod: value })} options={lbMethodOptions} />
+        <SettingsTextField label="Max fails" description="Failures before an endpoint is marked unavailable." value={upstream.maxFails} onChange={(value) => onChange({ ...upstream, maxFails: value })} placeholder="default: 1" />
+        <SettingsTextField label="Fail timeout" description="Time window used with max fails." value={upstream.failTimeout} onChange={(value) => onChange({ ...upstream, failTimeout: value })} placeholder="default: 10s" />
+        <SettingsTextField label="Max conns" description="Maximum simultaneous connections to this backend." value={upstream.maxConns} onChange={(value) => onChange({ ...upstream, maxConns: value })} placeholder="default: 0" />
+        <SettingsToggleField label="Enable health check" description="Enable NGINX Plus stream health checks for this upstream." checked={healthCheck.enable} onChange={(value) => updateHealthCheck({ enable: value })} />
+        <SettingsTextField label="Interval" description="Time between consecutive stream health checks." value={healthCheck.interval} onChange={(value) => updateHealthCheck({ interval: value })} placeholder="default: 5s" />
+        <SettingsTextField label="Jitter" description="Random delay applied to each health check." value={healthCheck.jitter} onChange={(value) => updateHealthCheck({ jitter: value })} placeholder="default: no delay" />
+        <SettingsTextField label="Fails" description="Consecutive failed checks before marking the endpoint unhealthy." value={healthCheck.fails} onChange={(value) => updateHealthCheck({ fails: value })} placeholder="default: 1" />
+        <SettingsTextField label="Passes" description="Consecutive successful checks before marking the endpoint healthy." value={healthCheck.passes} onChange={(value) => updateHealthCheck({ passes: value })} placeholder="default: 1" />
+        <SettingsTextField label="Health check port" description="Port used for stream health checks." value={healthCheck.port} onChange={(value) => updateHealthCheck({ port: value })} placeholder="default: upstream port" />
+        <SettingsTextField label="Connect timeout" description="Time allowed to connect during a health check." value={healthCheck.connectTimeout} onChange={(value) => updateHealthCheck({ connectTimeout: value })} placeholder="default: 5s" />
+        <SettingsTextField label="Match send" description="Payload sent during a stream health check match block." value={healthCheck.matchSend} onChange={(value) => updateHealthCheck({ matchSend: value })} placeholder="example: ping" />
+        <SettingsTextField label="Match expect" description="Expected response payload for the health check match block." value={healthCheck.matchExpect} onChange={(value) => updateHealthCheck({ matchExpect: value })} placeholder="example: pong" />
       </div>
     </div>
   );
@@ -2284,13 +2316,13 @@ export function TransportServerBuilderPanel({
       </Section>
 
       <Section title="Upstream Parameters" description="Retry behavior and UDP session settings">
-        <div className="builder-grid">
-          <TextField label="Connect timeout" description="Time allowed to connect to a backend endpoint." value={form.upstreamConnectTimeout} onChange={(value) => update("upstreamConnectTimeout", value)} placeholder="default: 60s" />
-          <BooleanSelectField label="Allow next upstream" description="Retry another backend endpoint if the first one fails." value={form.upstreamNextUpstream} onChange={(value) => update("upstreamNextUpstream", value)} />
-          <TextField label="Next upstream timeout" description="Total retry time budget across stream upstreams." value={form.upstreamNextUpstreamTimeout} onChange={(value) => update("upstreamNextUpstreamTimeout", value)} placeholder="default: 0" />
-          <TextField label="Next upstream tries" description="Maximum number of stream retry attempts." value={form.upstreamNextUpstreamTries} onChange={(value) => update("upstreamNextUpstreamTries", value)} placeholder="default: 0" />
-          <TextField label="UDP requests" description="Number of UDP datagrams after which NGINX starts a new session." value={form.udpRequests} onChange={(value) => update("udpRequests", value)} placeholder="default: 1" />
-          <TextField label="UDP responses" description="Expected number of UDP datagrams from the backend." value={form.udpResponses} onChange={(value) => update("udpResponses", value)} placeholder="default: 1" />
+        <div className="settings-table">
+          <SettingsTextField label="Connect timeout" description="Time allowed to connect to a backend endpoint." value={form.upstreamConnectTimeout} onChange={(value) => update("upstreamConnectTimeout", value)} placeholder="default: 60s" />
+          <SettingsBooleanField label="Allow next upstream" description="Retry another backend endpoint if the first one fails." value={form.upstreamNextUpstream} onChange={(value) => update("upstreamNextUpstream", value)} />
+          <SettingsTextField label="Next upstream timeout" description="Total retry time budget across stream upstreams." value={form.upstreamNextUpstreamTimeout} onChange={(value) => update("upstreamNextUpstreamTimeout", value)} placeholder="default: 0" />
+          <SettingsTextField label="Next upstream tries" description="Maximum number of stream retry attempts." value={form.upstreamNextUpstreamTries} onChange={(value) => update("upstreamNextUpstreamTries", value)} placeholder="default: 0" />
+          <SettingsTextField label="UDP requests" description="Number of UDP datagrams after which NGINX starts a new session." value={form.udpRequests} onChange={(value) => update("udpRequests", value)} placeholder="default: 1" />
+          <SettingsTextField label="UDP responses" description="Expected number of UDP datagrams from the backend." value={form.udpResponses} onChange={(value) => update("udpResponses", value)} placeholder="default: 1" />
         </div>
       </Section>
 
@@ -2312,9 +2344,9 @@ export function TransportServerBuilderPanel({
       </Section>
 
       <Section title="Snippets" description="Raw stream and server context snippets">
-        <div className="builder-grid">
-          <TextAreaField label="Server snippets" description="Directives injected into the stream server block." value={form.serverSnippets} onChange={(value) => update("serverSnippets", value)} placeholder="" />
-          <TextAreaField label="Stream snippets" description="Directives injected into the top-level stream block." value={form.streamSnippets} onChange={(value) => update("streamSnippets", value)} placeholder="" />
+        <div className="settings-table">
+          <SettingsTextAreaField label="Server snippets" description="Directives injected into the stream server block." value={form.serverSnippets} onChange={(value) => update("serverSnippets", value)} placeholder="" />
+          <SettingsTextAreaField label="Stream snippets" description="Directives injected into the top-level stream block." value={form.streamSnippets} onChange={(value) => update("streamSnippets", value)} placeholder="" />
         </div>
       </Section>
     </div>
