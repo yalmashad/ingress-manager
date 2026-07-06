@@ -367,6 +367,32 @@ function NamespaceField({
   );
 }
 
+function namespaceOptions(clusterOptions: ClusterOptions, value: string) {
+  return clusterOptions.namespaces.length
+    ? clusterOptions.namespaces.map((namespace) => ({ value: namespace, label: namespace }))
+    : [{ value, label: value || "default" }];
+}
+
+function SettingsNamespaceField({
+  value,
+  onChange,
+  clusterOptions,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  clusterOptions: ClusterOptions;
+}) {
+  return (
+    <SettingsSelectField
+      label="Namespace"
+      description="The Kubernetes namespace where this resource will live."
+      value={value}
+      onChange={onChange}
+      options={namespaceOptions(clusterOptions, value)}
+    />
+  );
+}
+
 function IngressClassField({
   value,
   onChange,
@@ -378,6 +404,26 @@ function IngressClassField({
 }) {
   return (
     <SelectField
+      label="Ingress class"
+      description="Select which ingress controller instance should own this resource."
+      value={value}
+      onChange={onChange}
+      options={[{ value: "", label: "None" }, ...clusterOptions.ingressClasses.map((item) => ({ value: item, label: item }))]}
+    />
+  );
+}
+
+function SettingsIngressClassField({
+  value,
+  onChange,
+  clusterOptions,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  clusterOptions: ClusterOptions;
+}) {
+  return (
+    <SettingsSelectField
       label="Ingress class"
       description="Select which ingress controller instance should own this resource."
       value={value}
@@ -1831,40 +1877,60 @@ export function VirtualServerBuilderPanel({
       </div>
 
       <Section title="General" description="Identity, namespace, host, policies, and ownership" defaultOpen>
-        <div className="builder-grid">
-          <TextField label="Name" description="The Kubernetes name of this VirtualServer." value={form.name} onChange={(value) => update("name", value)} placeholder="example: cafe" required />
-          <NamespaceField value={form.namespace} onChange={(value) => update("namespace", value)} clusterOptions={clusterOptions} />
-          <TextField label="Host" description="Unique host name served by this VirtualServer." value={form.host} onChange={(value) => update("host", value)} placeholder="example: cafe.example.com" required />
-          <IngressClassField value={form.ingressClassName} onChange={(value) => update("ingressClassName", value)} clusterOptions={clusterOptions} />
-          <DosField value={form.dos} onChange={(value) => update("dos", value)} clusterOptions={clusterOptions} onCreateResource={onCreateResource} />
-          <PolicyRefsField label="Policies" value={form.policyRefsText} onChange={(value) => update("policyRefsText", value)} clusterOptions={clusterOptions} onCreateResource={onCreateResource} />
-          <div className="toggle-group grid-span-2">
-            <BooleanSelectField label="Internal route" description="Mark the VirtualServer as internal-only." value={form.internalRoute} onChange={(value) => update("internalRoute", value)} />
-            <BooleanSelectField label="Enable gunzip" description="Allow NGINX to decompress gzipped upstream responses." value={form.gunzip} onChange={(value) => update("gunzip", value)} />
-            <BooleanSelectField
-              label="Enable External DNS"
-              description="Generate ExternalDNS records for this VirtualServer."
-              value={form.externalDnsEnable}
-              onChange={(value) =>
-                setForm((current) => ({
-                  ...current,
-                  externalDnsEnable: value,
-                  externalDnsRecordTTL: value ? current.externalDnsRecordTTL : "",
-                }))
+        <div className="settings-table">
+          <SettingsTextField label="Name" description="The Kubernetes name of this VirtualServer." value={form.name} onChange={(value) => update("name", value)} placeholder="example: cafe" required />
+          <SettingsNamespaceField value={form.namespace} onChange={(value) => update("namespace", value)} clusterOptions={clusterOptions} />
+          <SettingsTextField label="Host" description="Unique host name served by this VirtualServer." value={form.host} onChange={(value) => update("host", value)} placeholder="example: cafe.example.com" required />
+          <SettingsIngressClassField value={form.ingressClassName} onChange={(value) => update("ingressClassName", value)} clusterOptions={clusterOptions} />
+          <SettingsSelectField
+            label="DOS resource"
+            description="Reference an App Protect DoS resource for this object."
+            value={form.dos}
+            onChange={(value) => {
+              if (value === createDosValue) {
+                onCreateResource("DosProtectedResource", { onCreated: (created) => update("dos", created) });
+                return;
               }
+              update("dos", value);
+            }}
+            options={resourceOptions(clusterOptions.dosResources, createDosValue, "Create new DOS resource...")}
+          />
+          <SettingsSelectField
+            label="Policies"
+            description="Attach a Policy resource that NGINX should apply here."
+            value={form.policyRefsText}
+            onChange={(value) => {
+              if (value === createPolicyValue) {
+                onCreateResource("Policy", { onCreated: (created) => update("policyRefsText", created) });
+                return;
+              }
+              update("policyRefsText", value);
+            }}
+            options={resourceOptions(clusterOptions.policies, createPolicyValue, "Create new Policy...")}
+          />
+          <SettingsBooleanField label="Internal route" description="Mark the VirtualServer as internal-only." value={form.internalRoute} onChange={(value) => update("internalRoute", value)} />
+          <SettingsBooleanField label="Enable gunzip" description="Allow NGINX to decompress gzipped upstream responses." value={form.gunzip} onChange={(value) => update("gunzip", value)} />
+          <SettingsToggleField
+            label="Enable External DNS"
+            description="Generate ExternalDNS records for this VirtualServer."
+            checked={form.externalDnsEnable}
+            onChange={(value) =>
+              setForm((current) => ({
+                ...current,
+                externalDnsEnable: value,
+                externalDnsRecordTTL: value ? current.externalDnsRecordTTL : "",
+              }))
+            }
+          />
+          {form.externalDnsEnable ? (
+            <SettingsTextField
+              label="Record TTL"
+              description="ExternalDNS record TTL in seconds."
+              value={form.externalDnsRecordTTL}
+              onChange={(value) => update("externalDnsRecordTTL", value)}
+              placeholder="keep blank for the default"
             />
-            {form.externalDnsEnable ? (
-              <div className="toggle-subfield">
-                <TextField
-                  label="Record TTL"
-                  description="ExternalDNS record TTL in seconds."
-                  value={form.externalDnsRecordTTL}
-                  onChange={(value) => update("externalDnsRecordTTL", value)}
-                  placeholder="keep blank for the default"
-                />
-              </div>
-            ) : null}
-          </div>
+          ) : null}
         </div>
       </Section>
 
@@ -2192,16 +2258,28 @@ export function TransportServerBuilderPanel({
       </div>
 
       <Section title="General" description="Identity, namespace, listener, and primary action" defaultOpen>
-        <div className="builder-grid">
-          <TextField label="Name" description="The Kubernetes name of this TransportServer." value={form.name} onChange={(value) => update("name", value)} placeholder="example: mysql" required />
-          <NamespaceField value={form.namespace} onChange={(value) => update("namespace", value)} clusterOptions={clusterOptions} />
-          <TextField label="Host" description="Optional SNI host used for TLS passthrough." value={form.host} onChange={(value) => update("host", value)} placeholder="example: tcp.example.com" />
-          <IngressClassField value={form.ingressClassName} onChange={(value) => update("ingressClassName", value)} clusterOptions={clusterOptions} />
-          <SelectField label="Listener name" description="Listener created in GlobalConfiguration." value={form.listenerName} onChange={(value) => value === createListenerValue ? onCreateResource("GlobalConfiguration", { onCreated: (created) => update("listenerName", created) }) : update("listenerName", value)} options={listenerOptions(clusterOptions)} required />
-          <SelectField label="Listener protocol" description="Protocol used by this listener." value={form.listenerProtocol} onChange={(value) => update("listenerProtocol", value as TransportServerForm["listenerProtocol"])} options={transportListenerProtocolOptions} required />
-          <TextField label="Action pass upstream" description="Upstream that receives matching TCP or UDP traffic." value={form.actionPass} onChange={(value) => update("actionPass", value)} placeholder="example: tcp-app" required />
-          <TlsSecretField value={form.tlsSecret} onChange={(value) => update("tlsSecret", value)} clusterOptions={clusterOptions} onCreateResource={onCreateResource} />
-          <TextField label="Session timeout" description="Idle timeout between client and upstream packets." value={form.sessionTimeout} onChange={(value) => update("sessionTimeout", value)} placeholder="default: 10m" />
+        <div className="settings-table">
+          <SettingsTextField label="Name" description="The Kubernetes name of this TransportServer." value={form.name} onChange={(value) => update("name", value)} placeholder="example: mysql" required />
+          <SettingsNamespaceField value={form.namespace} onChange={(value) => update("namespace", value)} clusterOptions={clusterOptions} />
+          <SettingsTextField label="Host" description="Optional SNI host used for TLS passthrough." value={form.host} onChange={(value) => update("host", value)} placeholder="example: tcp.example.com" />
+          <SettingsIngressClassField value={form.ingressClassName} onChange={(value) => update("ingressClassName", value)} clusterOptions={clusterOptions} />
+          <SettingsSelectField label="Listener name" description="Listener created in GlobalConfiguration." value={form.listenerName} onChange={(value) => value === createListenerValue ? onCreateResource("GlobalConfiguration", { onCreated: (created) => update("listenerName", created) }) : update("listenerName", value)} options={listenerOptions(clusterOptions)} required />
+          <SettingsSelectField label="Listener protocol" description="Protocol used by this listener." value={form.listenerProtocol} onChange={(value) => update("listenerProtocol", value as TransportServerForm["listenerProtocol"])} options={transportListenerProtocolOptions} required />
+          <SettingsTextField label="Action pass upstream" description="Upstream that receives matching TCP or UDP traffic." value={form.actionPass} onChange={(value) => update("actionPass", value)} placeholder="example: tcp-app" required />
+          <SettingsSelectField
+            label="TLS secret"
+            description="Choose the TLS secret used for HTTPS termination."
+            value={form.tlsSecret}
+            onChange={(value) => {
+              if (value === createTlsSecretValue) {
+                onCreateResource("Secret", { onCreated: (created) => update("tlsSecret", created) });
+                return;
+              }
+              update("tlsSecret", value);
+            }}
+            options={resourceOptions(clusterOptions.tlsSecrets, createTlsSecretValue, "Create Secret")}
+          />
+          <SettingsTextField label="Session timeout" description="Idle timeout between client and upstream packets." value={form.sessionTimeout} onChange={(value) => update("sessionTimeout", value)} placeholder="default: 10m" />
         </div>
       </Section>
 
@@ -2267,11 +2345,11 @@ export function VirtualServerRouteBuilderPanel({
       </div>
 
       <Section title="General" description="Identity, namespace, host, and ingress ownership" defaultOpen>
-        <div className="builder-grid">
-          <TextField label="Name" description="The Kubernetes name of this VirtualServerRoute." value={form.name} onChange={(value) => update("name", value)} placeholder="example: cafe-routes" required />
-          <NamespaceField value={form.namespace} onChange={(value) => update("namespace", value)} clusterOptions={clusterOptions} />
-          <TextField label="Host" description="Host name that must match the parent VirtualServer." value={form.host} onChange={(value) => update("host", value)} placeholder="example: cafe.example.com" required />
-          <IngressClassField value={form.ingressClassName} onChange={(value) => update("ingressClassName", value)} clusterOptions={clusterOptions} />
+        <div className="settings-table">
+          <SettingsTextField label="Name" description="The Kubernetes name of this VirtualServerRoute." value={form.name} onChange={(value) => update("name", value)} placeholder="example: cafe-routes" required />
+          <SettingsNamespaceField value={form.namespace} onChange={(value) => update("namespace", value)} clusterOptions={clusterOptions} />
+          <SettingsTextField label="Host" description="Host name that must match the parent VirtualServer." value={form.host} onChange={(value) => update("host", value)} placeholder="example: cafe.example.com" required />
+          <SettingsIngressClassField value={form.ingressClassName} onChange={(value) => update("ingressClassName", value)} clusterOptions={clusterOptions} />
         </div>
       </Section>
 
@@ -2365,10 +2443,10 @@ export function SecretBuilderPanel({
       </div>
 
       <Section title="General" description="Name, namespace, and secret type" defaultOpen>
-        <div className="builder-grid">
-          <TextField label="Secret name" description="The Kubernetes name of this secret." value={form.name} onChange={(value) => update("name", value)} placeholder="secret-name" required />
-          <NamespaceField value={form.namespace} onChange={(value) => update("namespace", value)} clusterOptions={clusterOptions} />
-          <SelectField label="Secret type" description="Secret type expected by NGINX Ingress Controller policies." value={form.secretType} onChange={(value) => update("secretType", value as SecretType)} options={availableSecretTypeOptions} required />
+        <div className="settings-table">
+          <SettingsTextField label="Secret name" description="The Kubernetes name of this secret." value={form.name} onChange={(value) => update("name", value)} placeholder="secret-name" required />
+          <SettingsNamespaceField value={form.namespace} onChange={(value) => update("namespace", value)} clusterOptions={clusterOptions} />
+          <SettingsSelectField label="Secret type" description="Secret type expected by NGINX Ingress Controller policies." value={form.secretType} onChange={(value) => update("secretType", value as SecretType)} options={availableSecretTypeOptions} required />
         </div>
       </Section>
 
