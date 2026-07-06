@@ -4,6 +4,7 @@ type KubeconfigDocument = {
   clusters?: Array<{
     cluster?: {
       server?: string;
+      "tls-server-name"?: string;
     };
   }>;
 };
@@ -22,15 +23,21 @@ export function rewriteLoopbackClusterServers(kubeconfig: string, rewriteHost: s
 
   let changed = false;
   for (const entry of parsed.clusters) {
-    const server = entry.cluster?.server;
+    const cluster = entry.cluster;
+    const server = cluster?.server;
     if (!server) continue;
 
     try {
       const url = new URL(server);
       if (!loopbackHosts.has(url.hostname)) continue;
 
+      const tlsServerName = cluster["tls-server-name"] ?? url.hostname;
       url.hostname = rewriteHost;
-      entry.cluster = { ...entry.cluster, server: url.toString() };
+      entry.cluster = {
+        ...cluster,
+        server: url.toString(),
+        "tls-server-name": tlsServerName,
+      };
       changed = true;
     } catch {
       // Leave non-URL server values untouched so Kubernetes validation owns the error.

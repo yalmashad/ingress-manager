@@ -3,7 +3,7 @@ import YAML from "yaml";
 import { rewriteLoopbackClusterServers } from "./kubeconfig.js";
 
 describe("rewriteLoopbackClusterServers", () => {
-  it("rewrites localhost Kubernetes API endpoints to the configured Docker host", () => {
+  it("rewrites localhost Kubernetes API endpoints and preserves the original TLS server name", () => {
     const kubeconfig = YAML.stringify({
       apiVersion: "v1",
       clusters: [
@@ -16,8 +16,30 @@ describe("rewriteLoopbackClusterServers", () => {
     const rewritten = YAML.parse(rewriteLoopbackClusterServers(kubeconfig, "host.docker.internal"));
 
     expect(rewritten.clusters[0].cluster.server).toBe("https://host.docker.internal:51177/");
+    expect(rewritten.clusters[0].cluster["tls-server-name"]).toBe("127.0.0.1");
     expect(rewritten.clusters[1].cluster.server).toBe("https://host.docker.internal:6443/");
+    expect(rewritten.clusters[1].cluster["tls-server-name"]).toBe("localhost");
     expect(rewritten.clusters[2].cluster.server).toBe("https://10.0.0.5:6443");
+    expect(rewritten.clusters[2].cluster["tls-server-name"]).toBeUndefined();
+  });
+
+  it("does not overwrite an explicit TLS server name", () => {
+    const kubeconfig = YAML.stringify({
+      clusters: [
+        {
+          name: "local",
+          cluster: {
+            server: "https://127.0.0.1:51177",
+            "tls-server-name": "localhost",
+          },
+        },
+      ],
+    });
+
+    const rewritten = YAML.parse(rewriteLoopbackClusterServers(kubeconfig, "host.docker.internal"));
+
+    expect(rewritten.clusters[0].cluster.server).toBe("https://host.docker.internal:51177/");
+    expect(rewritten.clusters[0].cluster["tls-server-name"]).toBe("localhost");
   });
 
   it("leaves kubeconfig unchanged when no rewrite host is configured", () => {
