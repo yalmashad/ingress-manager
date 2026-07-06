@@ -137,6 +137,7 @@ function resourceOptions(items: Array<{ name: string; namespace?: string }>, cre
 }
 
 function secretTypeLabel(secretType: SecretType) {
+  if (!secretType) return "Select secret type";
   if (secretType === "kubernetes.io/tls") return "TLS secret";
   return secretTypeOptions.find((option) => option.value === secretType)?.label ?? secretType;
 }
@@ -694,6 +695,54 @@ function SecretSourceField({
         <textarea rows={textRows} value={textValue} placeholder={textPlaceholder} onChange={(event) => onTextChange(event.target.value)} />
       )}
     </div>
+  );
+}
+
+function SettingsSecretSourceField({
+  label,
+  description,
+  source,
+  onSourceChange,
+  fileAccept,
+  onFileUpload,
+  textValue,
+  onTextChange,
+  textPlaceholder,
+  textRows = 8,
+  required = false,
+}: {
+  label: string;
+  description: string;
+  source: SecretInputSource;
+  onSourceChange: (value: SecretInputSource) => void;
+  fileAccept: string;
+  onFileUpload: (file: File | null) => void;
+  textValue: string;
+  onTextChange: (value: string) => void;
+  textPlaceholder: string;
+  textRows?: number;
+  required?: boolean;
+}) {
+  return (
+    <SettingsRow label={label} description={description} required={required}>
+      <div className="settings-source-control">
+        <div className="secret-source-options" role="radiogroup" aria-label={`${label} source`}>
+          <label className="radio-option">
+            <input type="radio" checked={source === "upload"} onChange={() => onSourceChange("upload")} />
+            <span>Upload File</span>
+          </label>
+          <label className="radio-option">
+            <input type="radio" checked={source === "paste"} onChange={() => onSourceChange("paste")} />
+            <span>Paste Text</span>
+          </label>
+        </div>
+        {source === "upload" ? (
+          <input type="file" accept={fileAccept} onChange={(event) => onFileUpload(event.target.files?.[0] ?? null)} />
+        ) : (
+          <textarea rows={textRows} value={textValue} placeholder={textPlaceholder} onChange={(event) => onTextChange(event.target.value)} />
+        )}
+      </div>
+    </SettingsRow>
   );
 }
 
@@ -2300,9 +2349,9 @@ export function SecretBuilderPanel({
   };
   const availableSecretTypeOptions =
     secretTypeChoices ??
-    (secretTypeOptions.some((option) => option.value === form.secretType)
-      ? secretTypeOptions
-      : [{ value: form.secretType, label: secretTypeLabel(form.secretType) }, ...secretTypeOptions]);
+    (form.secretType && !secretTypeOptions.some((option) => option.value === form.secretType)
+      ? [{ value: form.secretType, label: secretTypeLabel(form.secretType) }, ...secretTypeOptions]
+      : [{ value: "", label: "Select secret type" }, ...secretTypeOptions]);
 
   return (
     <div className="builder-panel">
@@ -2317,7 +2366,7 @@ export function SecretBuilderPanel({
 
       <Section title="General" description="Name, namespace, and secret type" defaultOpen>
         <div className="builder-grid">
-          <TextField label="Secret name" description="The Kubernetes name of this secret." value={form.name} onChange={(value) => update("name", value)} placeholder="tls-secret-name" required />
+          <TextField label="Secret name" description="The Kubernetes name of this secret." value={form.name} onChange={(value) => update("name", value)} placeholder="secret-name" required />
           <NamespaceField value={form.namespace} onChange={(value) => update("namespace", value)} clusterOptions={clusterOptions} />
           <SelectField label="Secret type" description="Secret type expected by NGINX Ingress Controller policies." value={form.secretType} onChange={(value) => update("secretType", value as SecretType)} options={availableSecretTypeOptions} required />
         </div>
@@ -2325,51 +2374,51 @@ export function SecretBuilderPanel({
 
       {form.secretType === "kubernetes.io/tls" ? (
       <Section title="TLS Certificate" description="Certificate and private key required by kubernetes.io/tls" defaultOpen>
-        <div className="builder-grid">
-          <SecretSourceField label="Certificate source" description="PEM-encoded certificate stored as tls.crt." source={certificateSource} onSourceChange={setCertificateSource} fileAccept=".crt,.pem,.cer,text/plain" onFileUpload={(file) => void handleFileUpload(file, "certificate")} textValue={form.certificate} onTextChange={(value) => update("certificate", value)} textPlaceholder="-----BEGIN CERTIFICATE-----" required />
-          <SecretSourceField label="Private key source" description="PEM-encoded private key stored as tls.key." source={privateKeySource} onSourceChange={setPrivateKeySource} fileAccept=".key,.pem,text/plain" onFileUpload={(file) => void handleFileUpload(file, "privateKey")} textValue={form.privateKey} onTextChange={(value) => update("privateKey", value)} textPlaceholder="-----BEGIN PRIVATE KEY-----" required />
+        <div className="settings-table">
+          <SettingsSecretSourceField label="Certificate source" description="PEM-encoded certificate stored as tls.crt." source={certificateSource} onSourceChange={setCertificateSource} fileAccept=".crt,.pem,.cer,text/plain" onFileUpload={(file) => void handleFileUpload(file, "certificate")} textValue={form.certificate} onTextChange={(value) => update("certificate", value)} textPlaceholder="-----BEGIN CERTIFICATE-----" required />
+          <SettingsSecretSourceField label="Private key source" description="PEM-encoded private key stored as tls.key." source={privateKeySource} onSourceChange={setPrivateKeySource} fileAccept=".key,.pem,text/plain" onFileUpload={(file) => void handleFileUpload(file, "privateKey")} textValue={form.privateKey} onTextChange={(value) => update("privateKey", value)} textPlaceholder="-----BEGIN PRIVATE KEY-----" required />
         </div>
       </Section>
       ) : null}
 
       {form.secretType === "nginx.org/apikey" ? (
         <Section title="API Key" description="Key/value data for nginx.org/apikey secrets" defaultOpen>
-          <div className="builder-grid">
-            <TextField label="Client name" description="Key name stored in the secret." value={form.apiKeyName} onChange={(value) => update("apiKeyName", value)} placeholder="example: client-a" required />
-            <TextField label="API key value" description="API key value stored under the client name." value={form.apiKeyValue} onChange={(value) => update("apiKeyValue", value)} placeholder="paste API key value" required />
+          <div className="settings-table">
+            <SettingsTextField label="Client name" description="Key name stored in the secret." value={form.apiKeyName} onChange={(value) => update("apiKeyName", value)} placeholder="example: client-a" required />
+            <SettingsTextField label="API key value" description="API key value stored under the client name." value={form.apiKeyValue} onChange={(value) => update("apiKeyValue", value)} placeholder="paste API key value" required />
           </div>
         </Section>
       ) : null}
 
       {form.secretType === "nginx.org/htpasswd" ? (
         <Section title="Htpasswd" description="Basic auth credentials stored under htpasswd" defaultOpen>
-          <div className="builder-grid">
-            <SecretSourceField label="Htpasswd source" description="htpasswd file content." source={htpasswdSource} onSourceChange={setHtpasswdSource} fileAccept=".htpasswd,.txt,text/plain" onFileUpload={(file) => void handleFileUpload(file, "htpasswd")} textValue={form.htpasswd} onTextChange={(value) => update("htpasswd", value)} textPlaceholder="example: user:$apr1$..." required />
+          <div className="settings-table">
+            <SettingsSecretSourceField label="Htpasswd source" description="htpasswd file content." source={htpasswdSource} onSourceChange={setHtpasswdSource} fileAccept=".htpasswd,.txt,text/plain" onFileUpload={(file) => void handleFileUpload(file, "htpasswd")} textValue={form.htpasswd} onTextChange={(value) => update("htpasswd", value)} textPlaceholder="example: user:$apr1$..." required />
           </div>
         </Section>
       ) : null}
 
       {form.secretType === "nginx.org/ca" ? (
         <Section title="CA Certificate" description="CA certificate and optional CRL for nginx.org/ca" defaultOpen>
-          <div className="builder-grid">
-            <SecretSourceField label="CA certificate source" description="PEM-encoded CA certificate stored as ca.crt." source={caCertificateSource} onSourceChange={setCaCertificateSource} fileAccept=".crt,.pem,.cer,text/plain" onFileUpload={(file) => void handleFileUpload(file, "caCertificate")} textValue={form.caCertificate} onTextChange={(value) => update("caCertificate", value)} textPlaceholder="-----BEGIN CERTIFICATE-----" required />
-            <SecretSourceField label="CRL source" description="Optional CRL stored as ca.crl." source={caCrlSource} onSourceChange={setCaCrlSource} fileAccept=".crl,.pem,.txt,text/plain" onFileUpload={(file) => void handleFileUpload(file, "caCrl")} textValue={form.caCrl} onTextChange={(value) => update("caCrl", value)} textPlaceholder="optional PEM or CRL content" textRows={6} />
+          <div className="settings-table">
+            <SettingsSecretSourceField label="CA certificate source" description="PEM-encoded CA certificate stored as ca.crt." source={caCertificateSource} onSourceChange={setCaCertificateSource} fileAccept=".crt,.pem,.cer,text/plain" onFileUpload={(file) => void handleFileUpload(file, "caCertificate")} textValue={form.caCertificate} onTextChange={(value) => update("caCertificate", value)} textPlaceholder="-----BEGIN CERTIFICATE-----" required />
+            <SettingsSecretSourceField label="CRL source" description="Optional CRL stored as ca.crl." source={caCrlSource} onSourceChange={setCaCrlSource} fileAccept=".crl,.pem,.txt,text/plain" onFileUpload={(file) => void handleFileUpload(file, "caCrl")} textValue={form.caCrl} onTextChange={(value) => update("caCrl", value)} textPlaceholder="optional PEM or CRL content" textRows={6} />
           </div>
         </Section>
       ) : null}
 
       {form.secretType === "nginx.org/oidc" ? (
         <Section title="OIDC Client Secret" description="Client secret stored under client-secret" defaultOpen>
-          <div className="builder-grid">
-            <TextField label="Client secret" description="OIDC client secret value." value={form.oidcClientSecret} onChange={(value) => update("oidcClientSecret", value)} placeholder="paste client secret" required />
+          <div className="settings-table">
+            <SettingsTextField label="Client secret" description="OIDC client secret value." value={form.oidcClientSecret} onChange={(value) => update("oidcClientSecret", value)} placeholder="paste client secret" required />
           </div>
         </Section>
       ) : null}
 
       {form.secretType === "nginx.org/jwk" ? (
         <Section title="JWT JWK" description="JWK content stored under jwk" defaultOpen>
-          <div className="builder-grid">
-            <SecretSourceField label="JWK source" description="JSON Web Key or key set content." source={jwkSource} onSourceChange={setJwkSource} fileAccept=".json,application/json,text/plain" onFileUpload={(file) => void handleFileUpload(file, "jwk")} textValue={form.jwk} onTextChange={(value) => update("jwk", value)} textPlaceholder='{"keys":[]}' required />
+          <div className="settings-table">
+            <SettingsSecretSourceField label="JWK source" description="JSON Web Key or key set content." source={jwkSource} onSourceChange={setJwkSource} fileAccept=".json,application/json,text/plain" onFileUpload={(file) => void handleFileUpload(file, "jwk")} textValue={form.jwk} onTextChange={(value) => update("jwk", value)} textPlaceholder='{"keys":[]}' required />
           </div>
         </Section>
       ) : null}

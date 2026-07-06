@@ -20,6 +20,7 @@ export type VerifyClientMode = "on" | "off" | "optional" | "optional_no_ca";
 export type RouteActionType = "pass" | "proxy" | "redirect" | "return";
 export type UpstreamType = "http" | "grpc";
 export type SecretType =
+  | ""
   | "kubernetes.io/tls"
   | "nginx.org/apikey"
   | "nginx.org/htpasswd"
@@ -1320,9 +1321,9 @@ export function defaultVirtualServerForm(): VirtualServerForm {
 
 export function defaultSecretForm(): SecretForm {
   return {
-    name: "api-key-secret-name",
+    name: "secret-name",
     namespace: "default",
-    secretType: "nginx.org/apikey",
+    secretType: "",
     certificate: "-----BEGIN CERTIFICATE-----\nPASTE_CERT_HERE\n-----END CERTIFICATE-----",
     privateKey: "-----BEGIN PRIVATE KEY-----\nPASTE_KEY_HERE\n-----END PRIVATE KEY-----",
     apiKeyName: "client-name",
@@ -1337,7 +1338,9 @@ export function defaultSecretForm(): SecretForm {
 
 export function buildSecretManifest(form: SecretForm) {
   const stringData =
-    form.secretType === "nginx.org/apikey"
+    form.secretType === ""
+      ? {}
+      : form.secretType === "nginx.org/apikey"
       ? { [form.apiKeyName.trim() || "client-name"]: form.apiKeyValue }
       : form.secretType === "nginx.org/htpasswd"
         ? { htpasswd: form.htpasswd }
@@ -1355,16 +1358,17 @@ export function buildSecretManifest(form: SecretForm) {
                   "tls.key": form.privateKey,
                 };
 
-  return {
+  const manifest: Record<string, unknown> = {
     apiVersion: "v1",
     kind: "Secret",
     metadata: {
       name: form.name,
       namespace: form.namespace,
     },
-    type: form.secretType,
     stringData,
   };
+  if (form.secretType) manifest.type = form.secretType;
+  return manifest;
 }
 
 export function parseSecretManifest(manifest: Record<string, unknown>): SecretForm {
@@ -1372,9 +1376,11 @@ export function parseSecretManifest(manifest: Record<string, unknown>): SecretFo
   const metadata = (manifest.metadata ?? {}) as Record<string, unknown>;
   form.name = String(metadata.name ?? form.name);
   form.namespace = String(metadata.namespace ?? form.namespace);
-  form.secretType = secretTypeOptions.some((option) => option.value === manifest.type)
+  form.secretType = manifest.type === "kubernetes.io/tls"
+    ? "kubernetes.io/tls"
+    : secretTypeOptions.some((option) => option.value === manifest.type)
     ? (manifest.type as SecretType)
-    : "kubernetes.io/tls";
+    : "";
   const stringData = (manifest.stringData ?? {}) as Record<string, unknown>;
   const data = (manifest.data ?? {}) as Record<string, unknown>;
   form.certificate = String(stringData["tls.crt"] ?? (typeof data["tls.crt"] === "string" ? decodeBase64(data["tls.crt"]) : form.certificate));

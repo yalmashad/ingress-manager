@@ -111,7 +111,7 @@ type CreateOverlay = {
 type ViewMode = "list" | "edit";
 
 function badgeText(summary: ResourceSummary) {
-  return summary.state || summary.namespace || "cluster";
+  return summary.state || summary.summary || summary.namespace || "cluster";
 }
 
 function resourceKeyOf(resource: Pick<ResourceSummary, "name" | "namespace">) {
