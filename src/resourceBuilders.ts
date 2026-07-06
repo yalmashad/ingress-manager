@@ -19,6 +19,16 @@ export type ListenerProtocol = "HTTP" | "TCP" | "UDP";
 export type VerifyClientMode = "on" | "off" | "optional" | "optional_no_ca";
 export type RouteActionType = "pass" | "proxy" | "redirect" | "return";
 export type UpstreamType = "http" | "grpc";
+export type SecretType =
+  | "kubernetes.io/tls"
+  | "nginx.org/apikey"
+  | "nginx.org/htpasswd"
+  | "nginx.org/ca"
+  | "nginx.org/oidc"
+  | "nginx.org/jwk";
+export type ApiKeySuppliedIn = "header" | "query";
+export type JwtMode = "localSecret" | "remoteJwks";
+export type RateLimitConditionType = "default" | "jwt" | "variable";
 
 export type PolicyForm = {
   name: string;
@@ -37,16 +47,20 @@ export type PolicyForm = {
   logLevel: string;
   rejectCode: string;
   scale: boolean;
+  conditionEnabled: boolean;
+  conditionType: RateLimitConditionType;
   conditionDefault: boolean;
   conditionJwtClaim: string;
   conditionJwtMatch: string;
   conditionVarName: string;
   conditionVarMatch: string;
+  apiKeySuppliedIn: ApiKeySuppliedIn;
   apiKeyClientSecret: string;
   apiKeySuppliedHeader: string;
   apiKeySuppliedQuery: string;
   basicAuthSecret: string;
   basicAuthRealm: string;
+  jwtMode: JwtMode;
   jwtRealm: string;
   jwtSecret: string;
   jwtToken: string;
@@ -301,8 +315,16 @@ export type VirtualServerForm = {
 export type SecretForm = {
   name: string;
   namespace: string;
+  secretType: SecretType;
   certificate: string;
   privateKey: string;
+  apiKeyName: string;
+  apiKeyValue: string;
+  htpasswd: string;
+  caCertificate: string;
+  caCrl: string;
+  oidcClientSecret: string;
+  jwk: string;
 };
 
 export const policyTypeOptions: Array<{ value: PolicyType; label: string }> = [
@@ -332,6 +354,14 @@ export const transportListenerProtocolOptions: TransportListenerProtocol[] = ["T
 export const corsMethodOptions = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
 export const cacheMethodOptions = ["GET", "HEAD", "POST"];
 export const rateKeyExamples = ["${binary_remote_addr}", "${request_uri}", "${request_method}", "${cookie_session}"];
+export const secretTypeOptions: Array<{ value: SecretType; label: string }> = [
+  { value: "kubernetes.io/tls", label: "TLS certificate" },
+  { value: "nginx.org/apikey", label: "API key" },
+  { value: "nginx.org/htpasswd", label: "Basic auth htpasswd" },
+  { value: "nginx.org/ca", label: "CA certificate" },
+  { value: "nginx.org/oidc", label: "OIDC client secret" },
+  { value: "nginx.org/jwk", label: "JWT JWK" },
+];
 
 function decodeBase64(value: string) {
   try {
@@ -397,11 +427,11 @@ const stringifyPolicyRefs = (value: Array<{ name?: string; namespace?: string }>
 
 export function defaultPolicyForm(policyType: PolicyType = "rateLimit"): PolicyForm {
   return {
-    name: `example-${policyType.toLowerCase()}-policy`,
+    name: "policy-name",
     namespace: "default",
     ingressClassName: "",
     policyType,
-    accessAllow: "10.0.0.0/8",
+    accessAllow: "",
     accessDeny: "",
     rate: "10r/s",
     zoneSize: "10M",
@@ -413,14 +443,18 @@ export function defaultPolicyForm(policyType: PolicyType = "rateLimit"): PolicyF
     logLevel: "error",
     rejectCode: "503",
     scale: false,
+    conditionEnabled: false,
+    conditionType: "default",
     conditionDefault: false,
     conditionJwtClaim: "",
     conditionJwtMatch: "",
     conditionVarName: "",
     conditionVarMatch: "",
-    apiKeyClientSecret: "$http_x_api_key",
-    apiKeySuppliedHeader: "$http_x_api_key",
+    apiKeySuppliedIn: "header",
+    apiKeyClientSecret: "",
+    apiKeySuppliedHeader: "x-api-key",
     apiKeySuppliedQuery: "",
+    jwtMode: "localSecret",
     basicAuthSecret: "",
     basicAuthRealm: "Protected",
     jwtRealm: "Closed Area",
@@ -548,14 +582,14 @@ export function buildPolicyManifest(form: PolicyForm) {
     if (form.scale) rateLimit.scale = true;
 
     const condition: Record<string, unknown> = {};
-    if (form.conditionDefault) condition.default = true;
-    if (form.conditionJwtClaim.trim() && form.conditionJwtMatch.trim()) {
+    if (form.conditionEnabled && form.conditionDefault) condition.default = true;
+    if (form.conditionEnabled && form.conditionJwtClaim.trim() && form.conditionJwtMatch.trim()) {
       condition.jwt = {
         claim: form.conditionJwtClaim.trim(),
         match: form.conditionJwtMatch.trim(),
       };
     }
-    if (form.conditionVarName.trim() && form.conditionVarMatch.trim()) {
+    if (form.conditionEnabled && form.conditionVarName.trim() && form.conditionVarMatch.trim()) {
       condition.variables = [{ name: form.conditionVarName.trim(), match: form.conditionVarMatch.trim() }];
     }
     if (Object.keys(condition).length) rateLimit.condition = condition;
@@ -566,8 +600,8 @@ export function buildPolicyManifest(form: PolicyForm) {
     spec.apiKey = {
       clientSecret: form.apiKeyClientSecret,
       suppliedIn: {
-        ...(form.apiKeySuppliedHeader.trim() ? { header: splitLines(form.apiKeySuppliedHeader) } : {}),
-        ...(form.apiKeySuppliedQuery.trim() ? { query: splitLines(form.apiKeySuppliedQuery) } : {}),
+        ...(form.apiKeySuppliedIn === "header" && form.apiKeySuppliedHeader.trim() ? { header: splitLines(form.apiKeySuppliedHeader) } : {}),
+        ...(form.apiKeySuppliedIn === "query" && form.apiKeySuppliedQuery.trim() ? { query: splitLines(form.apiKeySuppliedQuery) } : {}),
       },
     };
   }
@@ -582,15 +616,15 @@ export function buildPolicyManifest(form: PolicyForm) {
   if (form.policyType === "jwt") {
     spec.jwt = {
       ...(form.jwtRealm.trim() ? { realm: form.jwtRealm.trim() } : {}),
-      ...(form.jwtSecret.trim() ? { secret: form.jwtSecret.trim() } : {}),
       ...(form.jwtToken.trim() ? { token: form.jwtToken.trim() } : {}),
-      ...(form.jwtJwksUri.trim() ? { jwksURI: form.jwtJwksUri.trim() } : {}),
-      ...(form.jwtKeyCache.trim() ? { keyCache: form.jwtKeyCache.trim() } : {}),
-      ...(form.jwtTrustedCertSecret.trim() ? { trustedCertSecret: form.jwtTrustedCertSecret.trim() } : {}),
-      ...(form.jwtSslVerify ? { sslVerify: true } : {}),
-      ...(form.jwtSslVerifyDepth.trim() ? { sslVerifyDepth: Number(form.jwtSslVerifyDepth) } : {}),
-      ...(form.jwtSniEnabled ? { sniEnabled: true } : {}),
-      ...(form.jwtSniName.trim() ? { sniName: form.jwtSniName.trim() } : {}),
+      ...(form.jwtMode === "localSecret" && form.jwtSecret.trim() ? { secret: form.jwtSecret.trim() } : {}),
+      ...(form.jwtMode === "remoteJwks" && form.jwtJwksUri.trim() ? { jwksURI: form.jwtJwksUri.trim() } : {}),
+      ...(form.jwtMode === "remoteJwks" && form.jwtKeyCache.trim() ? { keyCache: form.jwtKeyCache.trim() } : {}),
+      ...(form.jwtMode === "remoteJwks" && form.jwtTrustedCertSecret.trim() ? { trustedCertSecret: form.jwtTrustedCertSecret.trim() } : {}),
+      ...(form.jwtMode === "remoteJwks" && form.jwtSslVerify ? { sslVerify: true } : {}),
+      ...(form.jwtMode === "remoteJwks" && form.jwtSslVerifyDepth.trim() ? { sslVerifyDepth: Number(form.jwtSslVerifyDepth) } : {}),
+      ...(form.jwtMode === "remoteJwks" && form.jwtSniEnabled ? { sniEnabled: true } : {}),
+      ...(form.jwtMode === "remoteJwks" && form.jwtSniName.trim() ? { sniName: form.jwtSniName.trim() } : {}),
     };
   }
 
@@ -771,7 +805,9 @@ export function parsePolicyManifest(manifest: Record<string, unknown>) {
     form.rejectCode = value.rejectCode !== undefined ? String(value.rejectCode) : "";
     form.scale = Boolean(value.scale);
     const condition = (value.condition ?? {}) as Record<string, unknown>;
+    form.conditionEnabled = Object.keys(condition).length > 0;
     form.conditionDefault = Boolean(condition.default);
+    form.conditionType = condition.jwt ? "jwt" : condition.variables ? "variable" : "default";
     const jwt = (condition.jwt ?? {}) as Record<string, unknown>;
     form.conditionJwtClaim = String(jwt.claim ?? "");
     form.conditionJwtMatch = String(jwt.match ?? "");
@@ -783,6 +819,7 @@ export function parsePolicyManifest(manifest: Record<string, unknown>) {
   if (policyType === "apiKey") {
     form.apiKeyClientSecret = String(value.clientSecret ?? "");
     const suppliedIn = (value.suppliedIn ?? {}) as Record<string, unknown>;
+    form.apiKeySuppliedIn = Array.isArray(suppliedIn.query) && (suppliedIn.query as string[]).length ? "query" : "header";
     form.apiKeySuppliedHeader = Array.isArray(suppliedIn.header) ? (suppliedIn.header as string[]).join("\n") : "";
     form.apiKeySuppliedQuery = Array.isArray(suppliedIn.query) ? (suppliedIn.query as string[]).join("\n") : "";
   }
@@ -793,6 +830,7 @@ export function parsePolicyManifest(manifest: Record<string, unknown>) {
   }
 
   if (policyType === "jwt") {
+    form.jwtMode = value.jwksURI ? "remoteJwks" : "localSecret";
     form.jwtRealm = String(value.realm ?? "");
     form.jwtSecret = String(value.secret ?? "");
     form.jwtToken = String(value.token ?? "");
@@ -1283,14 +1321,41 @@ export function defaultVirtualServerForm(): VirtualServerForm {
 
 export function defaultSecretForm(): SecretForm {
   return {
-    name: "example-tls-secret",
+    name: "tls-secret-name",
     namespace: "default",
+    secretType: "kubernetes.io/tls",
     certificate: "-----BEGIN CERTIFICATE-----\nPASTE_CERT_HERE\n-----END CERTIFICATE-----",
     privateKey: "-----BEGIN PRIVATE KEY-----\nPASTE_KEY_HERE\n-----END PRIVATE KEY-----",
+    apiKeyName: "client-name",
+    apiKeyValue: "",
+    htpasswd: "",
+    caCertificate: "-----BEGIN CERTIFICATE-----\nPASTE_CA_CERT_HERE\n-----END CERTIFICATE-----",
+    caCrl: "",
+    oidcClientSecret: "",
+    jwk: '{\n  "keys": []\n}',
   };
 }
 
 export function buildSecretManifest(form: SecretForm) {
+  const stringData =
+    form.secretType === "nginx.org/apikey"
+      ? { [form.apiKeyName.trim() || "client-name"]: form.apiKeyValue }
+      : form.secretType === "nginx.org/htpasswd"
+        ? { htpasswd: form.htpasswd }
+        : form.secretType === "nginx.org/ca"
+          ? {
+              "ca.crt": form.caCertificate,
+              ...(form.caCrl.trim() ? { "ca.crl": form.caCrl } : {}),
+            }
+          : form.secretType === "nginx.org/oidc"
+            ? { "client-secret": form.oidcClientSecret }
+            : form.secretType === "nginx.org/jwk"
+              ? { jwk: form.jwk }
+              : {
+                  "tls.crt": form.certificate,
+                  "tls.key": form.privateKey,
+                };
+
   return {
     apiVersion: "v1",
     kind: "Secret",
@@ -1298,11 +1363,8 @@ export function buildSecretManifest(form: SecretForm) {
       name: form.name,
       namespace: form.namespace,
     },
-    type: "kubernetes.io/tls",
-    stringData: {
-      "tls.crt": form.certificate,
-      "tls.key": form.privateKey,
-    },
+    type: form.secretType,
+    stringData,
   };
 }
 
@@ -1311,10 +1373,23 @@ export function parseSecretManifest(manifest: Record<string, unknown>): SecretFo
   const metadata = (manifest.metadata ?? {}) as Record<string, unknown>;
   form.name = String(metadata.name ?? form.name);
   form.namespace = String(metadata.namespace ?? form.namespace);
+  form.secretType = secretTypeOptions.some((option) => option.value === manifest.type)
+    ? (manifest.type as SecretType)
+    : "kubernetes.io/tls";
   const stringData = (manifest.stringData ?? {}) as Record<string, unknown>;
   const data = (manifest.data ?? {}) as Record<string, unknown>;
   form.certificate = String(stringData["tls.crt"] ?? (typeof data["tls.crt"] === "string" ? decodeBase64(data["tls.crt"]) : form.certificate));
   form.privateKey = String(stringData["tls.key"] ?? (typeof data["tls.key"] === "string" ? decodeBase64(data["tls.key"]) : form.privateKey));
+  const apiKeyEntry = Object.entries(stringData).find(([key]) => key !== "tls.crt" && key !== "tls.key");
+  if (form.secretType === "nginx.org/apikey" && apiKeyEntry) {
+    form.apiKeyName = apiKeyEntry[0];
+    form.apiKeyValue = String(apiKeyEntry[1] ?? "");
+  }
+  form.htpasswd = String(stringData.htpasswd ?? (typeof data.htpasswd === "string" ? decodeBase64(data.htpasswd) : form.htpasswd));
+  form.caCertificate = String(stringData["ca.crt"] ?? (typeof data["ca.crt"] === "string" ? decodeBase64(data["ca.crt"]) : form.caCertificate));
+  form.caCrl = String(stringData["ca.crl"] ?? (typeof data["ca.crl"] === "string" ? decodeBase64(data["ca.crl"]) : form.caCrl));
+  form.oidcClientSecret = String(stringData["client-secret"] ?? (typeof data["client-secret"] === "string" ? decodeBase64(data["client-secret"]) : form.oidcClientSecret));
+  form.jwk = String(stringData.jwk ?? (typeof data.jwk === "string" ? decodeBase64(data.jwk) : form.jwk));
   return form;
 }
 

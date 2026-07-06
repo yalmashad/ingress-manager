@@ -169,6 +169,28 @@ function isTlsSecret(secret: AnyRecord) {
   return secret?.type === "kubernetes.io/tls" && Boolean(data["tls.crt"]) && Boolean(data["tls.key"]);
 }
 
+function isTypedSecret(secret: AnyRecord, type: string) {
+  return secret?.type === type;
+}
+
+function isIngressManagerSecret(secret: AnyRecord) {
+  return [
+    "kubernetes.io/tls",
+    "nginx.org/apikey",
+    "nginx.org/htpasswd",
+    "nginx.org/ca",
+    "nginx.org/oidc",
+    "nginx.org/jwk",
+  ].includes(secret?.type);
+}
+
+function summarizeNamedSecret(secret: AnyRecord) {
+  return {
+    name: secret.metadata?.name,
+    namespace: secret.metadata?.namespace,
+  };
+}
+
 async function listCustomResources(customApi: CustomObjectsApi, kind: string) {
   const details = customResourceKinds.get(kind);
   if (!details) {
@@ -292,7 +314,7 @@ app.post("/api/session/kubeconfig", upload.single("file"), (req, res) => {
     const kubeconfig = rewriteLoopbackClusterServers(fileContent || bodyContent, kubeconfigLoopbackHost);
 
     if (!kubeconfig.trim()) {
-      res.status(400).json({ message: "Upload a kubeconfig file or paste kubeconfig content." });
+      res.status(400).json({ message: "Upload a kubeconfig file." });
       return;
     }
 
@@ -346,7 +368,7 @@ app.get("/api/overview", async (req, res) => {
       const labels = JSON.stringify(item.metadata?.labels ?? {}).toLowerCase();
       return name.includes("nginx") || labels.includes("nginx-ingress");
     });
-    const tlsSecretItems = ((secrets.items ?? []) as AnyRecord[]).filter(isTlsSecret);
+    const ingressSecretItems = ((secrets.items ?? []) as AnyRecord[]).filter(isIngressManagerSecret);
 
     const [virtualServers, virtualServerRoutes, transportServers, policies, globalConfigurations] =
       await Promise.all([
@@ -373,7 +395,7 @@ app.get("/api/overview", async (req, res) => {
         TransportServer: simplifyResourceList(transportServers),
         Policy: simplifyResourceList(policies),
         GlobalConfiguration: simplifyResourceList(globalConfigurations),
-        Secret: simplifyResourceList(tlsSecretItems),
+        Secret: simplifyResourceList(ingressSecretItems),
       },
     });
   } catch (error) {
@@ -413,10 +435,12 @@ app.get("/api/options", async (req, res) => {
       dosResources,
       tlsSecrets: secrets
         .filter(isTlsSecret)
-        .map((secret) => ({
-          name: secret.metadata?.name,
-          namespace: secret.metadata?.namespace,
-        })),
+        .map(summarizeNamedSecret),
+      apiKeySecrets: secrets.filter((secret) => isTypedSecret(secret, "nginx.org/apikey")).map(summarizeNamedSecret),
+      htpasswdSecrets: secrets.filter((secret) => isTypedSecret(secret, "nginx.org/htpasswd")).map(summarizeNamedSecret),
+      caSecrets: secrets.filter((secret) => isTypedSecret(secret, "nginx.org/ca")).map(summarizeNamedSecret),
+      oidcSecrets: secrets.filter((secret) => isTypedSecret(secret, "nginx.org/oidc")).map(summarizeNamedSecret),
+      jwkSecrets: secrets.filter((secret) => isTypedSecret(secret, "nginx.org/jwk")).map(summarizeNamedSecret),
       listeners: listenerNames,
     });
   } catch (error) {

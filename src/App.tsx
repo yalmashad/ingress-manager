@@ -136,6 +136,11 @@ function emptyClusterOptions(): ClusterOptions {
     policies: [],
     dosResources: [],
     tlsSecrets: [],
+    apiKeySecrets: [],
+    htpasswdSecrets: [],
+    caSecrets: [],
+    oidcSecrets: [],
+    jwkSecrets: [],
     listeners: [],
   };
 }
@@ -145,7 +150,7 @@ function starterManifest(kind: string, namespace: string) {
     return YAML.stringify({
       apiVersion: "k8s.nginx.org/v1",
       kind: "Policy",
-      metadata: { name: "example-policy", namespace },
+      metadata: { name: "policy-name", namespace },
       spec: {
         rateLimit: {
           rate: "10r/s",
@@ -210,12 +215,21 @@ function starterManifest(kind: string, namespace: string) {
     return YAML.stringify({
       apiVersion: "v1",
       kind: "Secret",
-      metadata: { name: "example-tls-secret", namespace },
+      metadata: { name: "tls-secret-name", namespace },
       type: "kubernetes.io/tls",
       stringData: {
         "tls.crt": "-----BEGIN CERTIFICATE-----\nPASTE_CERT_HERE\n-----END CERTIFICATE-----",
         "tls.key": "-----BEGIN PRIVATE KEY-----\nPASTE_KEY_HERE\n-----END PRIVATE KEY-----",
       },
+    });
+  }
+
+  if (kind === "ConfigMap") {
+    return YAML.stringify({
+      apiVersion: "v1",
+      kind: "ConfigMap",
+      metadata: { name: "configmap-name", namespace },
+      data: {},
     });
   }
 
@@ -238,6 +252,20 @@ function starterManifest(kind: string, namespace: string) {
   });
 }
 
+function accessControlConflictMessage(manifest: Record<string, unknown>) {
+  if (manifest.kind !== "Policy") return null;
+  const spec = (manifest.spec ?? {}) as Record<string, unknown>;
+  const accessControl = spec.accessControl as Record<string, unknown> | undefined;
+  if (!accessControl) return null;
+  const allow = accessControl.allow;
+  const deny = accessControl.deny;
+  const hasAllow = Array.isArray(allow) ? allow.length > 0 : Boolean(allow);
+  const hasDeny = Array.isArray(deny) ? deny.length > 0 : Boolean(deny);
+  return hasAllow && hasDeny
+    ? "Access control policy has both allow and deny lists. NGINX Ingress Controller uses only the allow list; remove one list before applying."
+    : null;
+}
+
 function App() {
   const [theme, setTheme] = useState<Theme>(() =>
     getInitialTheme(
@@ -251,7 +279,6 @@ function App() {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [clusterOptions, setClusterOptions] = useState<ClusterOptions>(() => emptyClusterOptions());
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [kubeconfigText, setKubeconfigText] = useState("");
   const [selected, setSelected] = useState<SelectedResource | null>(null);
   const [manifestText, setManifestText] = useState(emptyManifest);
   const [saving, setSaving] = useState(false);
@@ -262,6 +289,7 @@ function App() {
   const [createKind, setCreateKind] = useState("VirtualServer");
   const [createNamespace, setCreateNamespace] = useState("default");
   const [policyForm, setPolicyForm] = useState<PolicyForm>(defaultPolicyForm());
+  const [policyTypeSelected, setPolicyTypeSelected] = useState(false);
   const [secretForm, setSecretForm] = useState<SecretForm>(defaultSecretForm());
   const [virtualServerForm, setVirtualServerForm] = useState<VirtualServerForm>(defaultVirtualServerForm());
   const [globalConfigurationForm, setGlobalConfigurationForm] = useState<GlobalConfigurationForm>(defaultGlobalConfigurationForm());
@@ -295,7 +323,14 @@ function App() {
     if (!builderKind) return;
     const nextManifest =
       builderKind === "Policy"
-        ? buildPolicyManifest(policyForm)
+        ? policyTypeSelected
+          ? buildPolicyManifest(policyForm)
+          : {
+              apiVersion: "k8s.nginx.org/v1",
+              kind: "Policy",
+              metadata: { name: policyForm.name, namespace: policyForm.namespace },
+              spec: {},
+            }
         : builderKind === "Secret"
           ? buildSecretManifest(secretForm)
         : builderKind === "VirtualServer"
@@ -316,6 +351,7 @@ function App() {
   }, [
     builderKind,
     policyForm,
+    policyTypeSelected,
     secretForm,
     virtualServerForm,
     globalConfigurationForm,
@@ -362,7 +398,10 @@ function App() {
       const parsed = YAML.parse(manifestText) as Record<string, unknown> | null;
       if (!parsed || typeof parsed !== "object") return;
 
-      if (parsed.kind === "Policy") setPolicyForm(parsePolicyManifest(parsed));
+      if (parsed.kind === "Policy") {
+        setPolicyForm(parsePolicyManifest(parsed));
+        setPolicyTypeSelected(Object.keys(((parsed.spec ?? {}) as Record<string, unknown>)).length > 0);
+      }
       if (parsed.kind === "Secret") setSecretForm(parseSecretManifest(parsed));
       if (parsed.kind === "VirtualServer") setVirtualServerForm(parseVirtualServerManifest(parsed));
       if (parsed.kind === "GlobalConfiguration") setGlobalConfigurationForm(parseGlobalConfigurationManifest(parsed));
@@ -377,10 +416,9 @@ function App() {
     try {
       setError(null);
       setNotice(null);
-      const nextStatus = (await uploadKubeconfig(selectedFile, kubeconfigText)) as SessionStatus;
+      const nextStatus = (await uploadKubeconfig(selectedFile, "")) as SessionStatus;
       setStatus(nextStatus);
       setSelectedFile(null);
-      setKubeconfigText("");
       const [nextOverview, nextCatalog, nextOptions] = await Promise.all([
         fetchJson<Overview>("/api/overview"),
         fetchJson<Catalog>("/api/catalog"),
@@ -453,6 +491,7 @@ function App() {
         const next = defaultPolicyForm();
         next.namespace = effectiveNamespace(createNamespace);
         setPolicyForm(next);
+        setPolicyTypeSelected(false);
         skipManifestParseRef.current = true;
         setManifestText(
           YAML.stringify({
@@ -562,6 +601,11 @@ function App() {
       setSaving(true);
       setError(null);
       const parsed = YAML.parse(manifestText) as Record<string, unknown>;
+      const conflictMessage = accessControlConflictMessage(parsed);
+      if (conflictMessage) {
+        setError(conflictMessage);
+        return;
+      }
       if (appMode === "generator") {
         await copyYaml([manifestText]);
         return;
@@ -607,6 +651,10 @@ function App() {
     options?: { onCreated?: (value: string) => void },
   ) {
     const metadata = (manifest.metadata ?? {}) as Record<string, unknown>;
+    const conflictMessage = accessControlConflictMessage(manifest);
+    if (conflictMessage) {
+      throw new Error(conflictMessage);
+    }
 
     if (appMode === "generator") {
       const serialized = YAML.stringify(manifest);
@@ -811,15 +859,6 @@ function App() {
             <span>Kubeconfig file</span>
             <input type="file" accept=".yaml,.yml,.conf,.config,*/*" onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)} />
           </label>
-          <label className="field">
-            <span>Or paste kubeconfig</span>
-            <textarea
-              rows={8}
-              placeholder="apiVersion: v1&#10;clusters: ..."
-              value={kubeconfigText}
-              onChange={(event) => setKubeconfigText(event.target.value)}
-            />
-          </label>
           <button className="primary" onClick={() => void handleImport()}>
             Import kubeconfig
           </button>
@@ -888,7 +927,7 @@ function App() {
             <h3>Import a kubeconfig to begin</h3>
             <p>
               The backend keeps kubeconfig server-side for this browser session, then uses the Kubernetes API to list
-              your NGINX controller workloads, ConfigMaps, and `k8s.nginx.org` custom resources.
+              your NGINX controller workloads, VirtualServer resources, TransportServer resources, and related policies.
             </p>
           </section>
         )}
@@ -905,12 +944,12 @@ function App() {
                 <strong>{overview.controllers.length}</strong>
               </article>
               <article className="stat-card">
-                <span>ConfigMaps</span>
-                <strong>{overview.configMaps.length}</strong>
+                <span>VirtualServer</span>
+                <strong>{overview.resources.VirtualServer?.length ?? 0}</strong>
               </article>
               <article className="stat-card">
-                <span>Custom resources</span>
-                <strong>{Object.values(overview.resources).reduce((total, items) => total + items.length, 0)}</strong>
+                <span>TransportServer</span>
+                <strong>{overview.resources.TransportServer?.length ?? 0}</strong>
               </article>
             </section>
           </>
@@ -989,7 +1028,17 @@ function App() {
               {viewMode === "edit" && (
               <>
               {builderKind === "Policy" && (
-                <PolicyBuilderPanel form={policyForm} setForm={setPolicyForm} setManifestText={setManifestText} setNotice={setNotice} clusterOptions={clusterOptions} onSubmitManifest={submitResourceManifest} onCreateResource={handleCreateRelatedResource} />
+                <PolicyBuilderPanel
+                  form={policyForm}
+                  setForm={setPolicyForm}
+                  policyTypeSelected={policyTypeSelected}
+                  setPolicyTypeSelected={setPolicyTypeSelected}
+                  setManifestText={setManifestText}
+                  setNotice={setNotice}
+                  clusterOptions={clusterOptions}
+                  onSubmitManifest={submitResourceManifest}
+                  onCreateResource={handleCreateRelatedResource}
+                />
               )}
               {builderKind === "Secret" && (
                 <SecretBuilderPanel form={secretForm} setForm={setSecretForm} setManifestText={setManifestText} setNotice={setNotice} clusterOptions={clusterOptions} onSubmitManifest={submitResourceManifest} onCreateResource={handleCreateRelatedResource} />

@@ -21,16 +21,21 @@ import {
   rateKeyExamples,
   routeActionOptions,
   sameSiteOptions,
+  secretTypeOptions,
   tlsRedirectBasedOnOptions,
   tlsRedirectCodeOptions,
   transportListenerProtocolOptions,
+  type ApiKeySuppliedIn,
   type GlobalConfigurationForm,
   type GlobalConfigurationListenerForm,
+  type JwtMode,
   type PolicyForm,
   type PolicyType,
+  type RateLimitConditionType,
   type RouteForm,
   type RouteActionType,
   type SecretForm,
+  type SecretType,
   type TransportServerForm,
   type TransportServerUpstreamForm,
   type UpstreamForm,
@@ -46,6 +51,11 @@ export type ClusterOptions = {
   policies: Array<{ name: string; namespace?: string }>;
   dosResources: Array<{ name: string; namespace?: string }>;
   tlsSecrets: Array<{ name: string; namespace?: string }>;
+  apiKeySecrets?: Array<{ name: string; namespace?: string }>;
+  htpasswdSecrets?: Array<{ name: string; namespace?: string }>;
+  caSecrets?: Array<{ name: string; namespace?: string }>;
+  oidcSecrets?: Array<{ name: string; namespace?: string }>;
+  jwkSecrets?: Array<{ name: string; namespace?: string }>;
   listeners: string[];
 };
 
@@ -65,6 +75,7 @@ type Option = string | { value: string; label: string };
 const createPolicyValue = "__create_policy__";
 const createDosValue = "__create_dos__";
 const createTlsSecretValue = "__create_tls_secret__";
+const createTypedSecretValue = "__create_typed_secret__";
 const createListenerValue = "__create_listener__";
 const lbMethodOptions = [
   { value: "", label: "Controller default" },
@@ -123,6 +134,20 @@ function resourceOptions(items: Array<{ name: string; namespace?: string }>, cre
     label: item.namespace ? `${item.namespace}/${item.name}` : item.name,
   }));
   return [{ value: "", label: "None" }, ...built, { value: createValue, label: createLabel }];
+}
+
+function secretTypeLabel(secretType: SecretType) {
+  return secretTypeOptions.find((option) => option.value === secretType)?.label ?? secretType;
+}
+
+function typedSecretItems(clusterOptions: ClusterOptions, secretType: SecretType) {
+  if (secretType === "kubernetes.io/tls") return clusterOptions.tlsSecrets;
+  if (secretType === "nginx.org/apikey") return clusterOptions.apiKeySecrets ?? [];
+  if (secretType === "nginx.org/htpasswd") return clusterOptions.htpasswdSecrets ?? [];
+  if (secretType === "nginx.org/ca") return clusterOptions.caSecrets ?? [];
+  if (secretType === "nginx.org/oidc") return clusterOptions.oidcSecrets ?? [];
+  if (secretType === "nginx.org/jwk") return clusterOptions.jwkSecrets ?? [];
+  return [];
 }
 
 function normalizeOptions(options: Option[]) {
@@ -374,6 +399,193 @@ function SecretField({
   placeholder: string;
 }) {
   return <TextField label={label} description={description} value={value} onChange={onChange} placeholder={placeholder} />;
+}
+
+function SettingsRow({
+  label,
+  description,
+  required = false,
+  children,
+}: {
+  label: string;
+  description: string;
+  required?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div className="settings-table-row">
+      <span className="settings-table-label">
+        {label}
+        {required ? <span className="required-indicator">Required</span> : null}
+        <button type="button" className="help-tip" title={description} aria-label={`${label}: ${description}`}>
+          ?
+        </button>
+      </span>
+      <div className="settings-table-control">{children}</div>
+    </div>
+  );
+}
+
+function SettingsTextField({
+  label,
+  description,
+  value,
+  onChange,
+  placeholder = "",
+  required = false,
+}: {
+  label: string;
+  description: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  required?: boolean;
+}) {
+  return (
+    <SettingsRow label={label} description={description} required={required}>
+      <input value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />
+    </SettingsRow>
+  );
+}
+
+function SettingsTextAreaField({
+  label,
+  description,
+  value,
+  onChange,
+  placeholder = "",
+  rows = 3,
+  required = false,
+}: {
+  label: string;
+  description: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  rows?: number;
+  required?: boolean;
+}) {
+  return (
+    <SettingsRow label={label} description={description} required={required}>
+      <textarea rows={rows} value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />
+    </SettingsRow>
+  );
+}
+
+function SettingsSelectField({
+  label,
+  description,
+  value,
+  onChange,
+  options,
+  required = false,
+}: {
+  label: string;
+  description: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: Option[];
+  required?: boolean;
+}) {
+  const normalized = normalizeOptions(options);
+  return (
+    <SettingsRow label={label} description={description} required={required}>
+      <select value={value} onChange={(event) => onChange(event.target.value)}>
+        {normalized.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </SettingsRow>
+  );
+}
+
+function SettingsToggleField({
+  label,
+  description,
+  checked,
+  onChange,
+}: {
+  label: string;
+  description: string;
+  checked: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <SettingsRow label={label} description={description}>
+      <label className="checkbox settings-checkbox">
+        <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+        <span>Enabled</span>
+      </label>
+    </SettingsRow>
+  );
+}
+
+function initialSecretManifest(secretType: SecretType, namespace?: string) {
+  const form = defaultSecretForm();
+  form.secretType = secretType;
+  form.namespace = namespace || form.namespace;
+  form.name =
+    secretType === "kubernetes.io/tls"
+      ? "tls-secret-name"
+      : secretType === "nginx.org/apikey"
+        ? "apikey-secret-name"
+        : secretType === "nginx.org/htpasswd"
+          ? "htpasswd-secret-name"
+          : secretType === "nginx.org/ca"
+            ? "ca-secret-name"
+            : secretType === "nginx.org/oidc"
+              ? "oidc-secret-name"
+              : "jwk-secret-name";
+  return YAML.stringify(buildSecretManifest(form));
+}
+
+function SettingsSecretSelect({
+  label,
+  description,
+  value,
+  onChange,
+  clusterOptions,
+  onCreateResource,
+  secretType,
+  namespace,
+  required = false,
+}: {
+  label: string;
+  description: string;
+  value: string;
+  onChange: (value: string) => void;
+  clusterOptions: ClusterOptions;
+  onCreateResource: (
+    kind: string,
+    options?: { namespace?: string; onCreated?: (value: string) => void; initialManifest?: string },
+  ) => void;
+  secretType: SecretType;
+  namespace?: string;
+  required?: boolean;
+}) {
+  const options = resourceOptions(typedSecretItems(clusterOptions, secretType), createTypedSecretValue, `Create new ${secretTypeLabel(secretType)}...`);
+  return (
+    <SettingsSelectField
+      label={label}
+      description={description}
+      value={value}
+      onChange={(next) => {
+        if (next === createTypedSecretValue) {
+          onCreateResource("Secret", {
+            namespace,
+            initialManifest: initialSecretManifest(secretType, namespace),
+            onCreated: (created) => onChange(created.includes("/") ? created.split("/").pop() ?? created : created),
+          });
+          return;
+        }
+        onChange(next);
+      }}
+      options={options}
+      required={required}
+    />
+  );
 }
 
 function ResourceRefField({
@@ -1014,25 +1226,31 @@ function RouteEditor({
 function PolicyTypeField({
   form,
   setForm,
+  onSelected,
+  selected,
 }: {
   form: PolicyForm;
   setForm: Dispatch<SetStateAction<PolicyForm>>;
+  onSelected?: () => void;
+  selected: boolean;
 }) {
   return (
     <SelectField
       label="Policy type"
-      description={policyTypeDescriptions[form.policyType]}
-      value={form.policyType}
-      onChange={(value) =>
+      description={selected ? policyTypeDescriptions[form.policyType] : "Choose the single policy type this resource will define."}
+      value={selected ? form.policyType : ""}
+      onChange={(value) => {
+        if (!value) return;
+        onSelected?.();
         setForm((current) => {
           const next = defaultPolicyForm(value as PolicyType);
           next.name = current.name;
           next.namespace = current.namespace;
-          next.ingressClassName = current.ingressClassName;
           return next;
-        })
-      }
-      options={policyTypeOptions}
+        });
+      }}
+      options={[{ value: "", label: "Select policy type" }, ...policyTypeOptions]}
+      required
     />
   );
 }
@@ -1083,139 +1301,214 @@ function multiSelectChecklist({
 function PolicySettings({
   form,
   update,
+  clusterOptions,
+  onCreateResource,
 }: {
   form: PolicyForm;
   update: <K extends keyof PolicyForm>(key: K, value: PolicyForm[K]) => void;
+  clusterOptions: ClusterOptions;
+  onCreateResource: PropsCommon["onCreateResource"];
 }) {
+  const hasAccessConflict = Boolean(form.accessAllow.trim() && form.accessDeny.trim());
+  const keyMode = rateKeyExamples.includes(form.key) ? form.key : "__custom__";
+
   if (form.policyType === "accessControl") {
     return (
-      <div className="builder-grid">
-        <TextAreaField label="Allow list" description="CIDRs or IPs that are allowed." value={form.accessAllow} onChange={(value) => update("accessAllow", value)} placeholder="example: 10.0.0.0/8" />
-        <TextAreaField label="Deny list" description="CIDRs or IPs that are denied." value={form.accessDeny} onChange={(value) => update("accessDeny", value)} placeholder="example: 0.0.0.0/0" />
+      <div className="settings-table">
+        {hasAccessConflict ? (
+          <div className="inline-warning">Allow and deny lists are both set. NGINX Ingress Controller uses only the allow list when both are referenced.</div>
+        ) : null}
+        <SettingsTextAreaField label="Allow list" description="CIDRs or IPs that are allowed." value={form.accessAllow} onChange={(value) => update("accessAllow", value)} placeholder="example: 10.0.0.0/8" />
+        <SettingsTextAreaField label="Deny list" description="CIDRs or IPs that are denied." value={form.accessDeny} onChange={(value) => update("accessDeny", value)} placeholder="example: 0.0.0.0/0" />
       </div>
     );
   }
 
   if (form.policyType === "rateLimit") {
     return (
-      <>
-        <div className="builder-grid">
-          <TextField label="Rate" description="Maximum request rate, for example 10r/s." value={form.rate} onChange={(value) => update("rate", value)} placeholder="example: 10r/s" />
-          <TextField label="Zone size" description="Shared memory zone size used to track counters." value={form.zoneSize} onChange={(value) => update("zoneSize", value)} placeholder="example: 10M" />
-          <SelectField label="Common key example" description="Pick a common rate-limit key expression." value={rateKeyExamples.includes(form.key) ? form.key : ""} onChange={(value) => update("key", value)} options={[{ value: "", label: "Choose an example" }, ...rateKeyExamples]} />
-          <TextField label="Custom key" description="Advanced variable or expression used to count requests." value={form.key} onChange={(value) => update("key", value)} placeholder="example: ${binary_remote_addr}" />
-          <TextField label="Burst" description="Number of excessive requests that may queue before rejection." value={form.burst} onChange={(value) => update("burst", value)} placeholder="example: 20" />
-          <TextField label="Delay" description="Threshold where excessive requests start being delayed." value={form.delay} onChange={(value) => update("delay", value)} placeholder="example: 5" />
-          <SelectField label="Log level" description="Severity used when delayed or rejected requests are logged." value={form.logLevel} onChange={(value) => update("logLevel", value)} options={logLevelOptions} />
-          <TextField label="Reject code" description="HTTP status returned when requests are rejected." value={form.rejectCode} onChange={(value) => update("rejectCode", value)} placeholder="example: 503" />
-          <BooleanSelectField label="No delay" description="Reject excessive requests immediately instead of delaying them." value={form.noDelay} onChange={(value) => update("noDelay", value)} />
-          <BooleanSelectField label="Dry run" description="Track over-limit requests without enforcing the limit." value={form.dryRun} onChange={(value) => update("dryRun", value)} />
-          <BooleanSelectField label="Scale by pod count" description="Divide the configured rate across active controller pods." value={form.scale} onChange={(value) => update("scale", value)} />
-        </div>
-      </>
+      <div className="settings-table">
+        <SettingsTextField label="Rate" description="Maximum request rate, for example 10r/s." value={form.rate} onChange={(value) => update("rate", value)} placeholder="example: 10r/s" required />
+        <SettingsTextField label="Zone size" description="Shared memory zone size used to track counters." value={form.zoneSize} onChange={(value) => update("zoneSize", value)} placeholder="example: 10M" required />
+        <SettingsSelectField
+          label="Key"
+          description="Rate-limit key expression."
+          value={keyMode}
+          onChange={(value) => update("key", value === "__custom__" ? "" : value)}
+          options={[...rateKeyExamples.map((option) => ({ value: option, label: option })), { value: "__custom__", label: "Custom key" }]}
+          required
+        />
+        {keyMode === "__custom__" ? <SettingsTextField label="Custom key" description="Advanced variable or expression used to count requests." value={form.key} onChange={(value) => update("key", value)} placeholder="example: ${binary_remote_addr}" required /> : null}
+        <SettingsTextField label="Burst" description="Number of excessive requests that may queue before rejection." value={form.burst} onChange={(value) => update("burst", value)} placeholder="example: 20" />
+        <SettingsTextField label="Delay" description="Threshold where excessive requests start being delayed." value={form.delay} onChange={(value) => update("delay", value)} placeholder="example: 5" />
+        <SettingsSelectField label="Log level" description="Severity used when delayed or rejected requests are logged." value={form.logLevel} onChange={(value) => update("logLevel", value)} options={logLevelOptions} />
+        <SettingsTextField label="Reject code" description="HTTP status returned when requests are rejected." value={form.rejectCode} onChange={(value) => update("rejectCode", value)} placeholder="default: 503" />
+        <SettingsToggleField label="Condition" description="Limit requests only when a condition matches." checked={form.conditionEnabled} onChange={(value) => {
+          update("conditionEnabled", value);
+          update("conditionDefault", value && form.conditionType === "default");
+          if (!value) {
+            update("conditionType", "default");
+            update("conditionJwtClaim", "");
+            update("conditionJwtMatch", "");
+            update("conditionVarName", "");
+            update("conditionVarMatch", "");
+          }
+        }} />
+        {form.conditionEnabled ? (
+          <>
+            <SettingsSelectField
+              label="Condition type"
+              description="Choose which documented condition form to use."
+              value={form.conditionType}
+              onChange={(value) => {
+                const next = value as RateLimitConditionType;
+                update("conditionType", next);
+                update("conditionDefault", next === "default");
+                if (next !== "jwt") {
+                  update("conditionJwtClaim", "");
+                  update("conditionJwtMatch", "");
+                }
+                if (next !== "variable") {
+                  update("conditionVarName", "");
+                  update("conditionVarMatch", "");
+                }
+              }}
+              options={[
+                { value: "default", label: "Default condition" },
+                { value: "jwt", label: "JWT claim" },
+                { value: "variable", label: "Variable" },
+              ]}
+            />
+            {form.conditionType === "jwt" ? (
+              <>
+                <SettingsTextField label="JWT claim" description="JWT claim used by the condition." value={form.conditionJwtClaim} onChange={(value) => update("conditionJwtClaim", value)} placeholder="example: sub" />
+                <SettingsTextField label="JWT match" description="Value or regex the JWT claim must match." value={form.conditionJwtMatch} onChange={(value) => update("conditionJwtMatch", value)} placeholder="example: ^admin" />
+              </>
+            ) : null}
+            {form.conditionType === "variable" ? (
+              <>
+                <SettingsTextField label="Variable name" description="NGINX variable used by the condition." value={form.conditionVarName} onChange={(value) => update("conditionVarName", value)} placeholder="example: $request_method" />
+                <SettingsTextField label="Variable match" description="Value or regex the variable must match." value={form.conditionVarMatch} onChange={(value) => update("conditionVarMatch", value)} placeholder="example: POST" />
+              </>
+            ) : null}
+          </>
+        ) : null}
+        <SettingsToggleField label="No delay" description="Reject excessive requests immediately instead of delaying them." checked={form.noDelay} onChange={(value) => update("noDelay", value)} />
+        <SettingsToggleField label="Dry run" description="Track over-limit requests without enforcing the limit." checked={form.dryRun} onChange={(value) => update("dryRun", value)} />
+        <SettingsToggleField label="Scale by pod count" description="Divide the configured rate across active controller pods." checked={form.scale} onChange={(value) => update("scale", value)} />
+      </div>
     );
   }
 
   if (form.policyType === "apiKey") {
     return (
-      <div className="builder-grid">
-        <TextField label="Client secret variable" description="Variable holding the provided API key." value={form.apiKeyClientSecret} onChange={(value) => update("apiKeyClientSecret", value)} placeholder="example: $http_x_api_key" />
-        <TextAreaField label="Header variables" description="Header variables where the API key may arrive." value={form.apiKeySuppliedHeader} onChange={(value) => update("apiKeySuppliedHeader", value)} placeholder="example: $http_x_api_key" />
-        <TextAreaField label="Query variables" description="Query variables where the API key may arrive." value={form.apiKeySuppliedQuery} onChange={(value) => update("apiKeySuppliedQuery", value)} placeholder="example: $arg_apikey" />
+      <div className="settings-table">
+        <SettingsSecretSelect label="Client secret" description="Secret of type nginx.org/apikey." value={form.apiKeyClientSecret} onChange={(value) => update("apiKeyClientSecret", value)} clusterOptions={clusterOptions} onCreateResource={onCreateResource} secretType="nginx.org/apikey" namespace={form.namespace} required />
+        <SettingsSelectField label="Supplied in" description="Where clients provide the API key." value={form.apiKeySuppliedIn} onChange={(value) => update("apiKeySuppliedIn", value as ApiKeySuppliedIn)} options={[{ value: "header", label: "Header" }, { value: "query", label: "Query parameter" }]} required />
+        {form.apiKeySuppliedIn === "header" ? (
+          <SettingsTextField label="Header" description="HTTP header name that carries the API key." value={form.apiKeySuppliedHeader} onChange={(value) => update("apiKeySuppliedHeader", value)} placeholder="example: x-api-key" required />
+        ) : (
+          <SettingsTextField label="Query" description="Query parameter name that carries the API key." value={form.apiKeySuppliedQuery} onChange={(value) => update("apiKeySuppliedQuery", value)} placeholder="example: apikey" required />
+        )}
       </div>
     );
   }
 
   if (form.policyType === "basicAuth") {
     return (
-      <div className="builder-grid">
-        <SecretField label="Htpasswd secret" description="Secret containing htpasswd credentials." value={form.basicAuthSecret} onChange={(value) => update("basicAuthSecret", value)} placeholder="example: webapp-htpasswd" />
-        <TextField label="Realm" description="Browser prompt realm shown during authentication." value={form.basicAuthRealm} onChange={(value) => update("basicAuthRealm", value)} placeholder="example: Protected Area" />
+      <div className="settings-table">
+        <SettingsSecretSelect label="Htpasswd secret" description="Secret of type nginx.org/htpasswd." value={form.basicAuthSecret} onChange={(value) => update("basicAuthSecret", value)} clusterOptions={clusterOptions} onCreateResource={onCreateResource} secretType="nginx.org/htpasswd" namespace={form.namespace} required />
+        <SettingsTextField label="Realm" description="Browser prompt realm shown during authentication." value={form.basicAuthRealm} onChange={(value) => update("basicAuthRealm", value)} placeholder="example: Protected Area" />
       </div>
     );
   }
 
   if (form.policyType === "jwt") {
     return (
-      <div className="builder-grid">
-        <TextField label="Realm" description="Realm shown when JWT authentication fails." value={form.jwtRealm} onChange={(value) => update("jwtRealm", value)} placeholder="example: Closed Area" />
-        <SecretField label="Secret" description="Secret containing JWT validation material." value={form.jwtSecret} onChange={(value) => update("jwtSecret", value)} placeholder="example: jwt-secret" />
-        <TextField label="Token variable" description="Variable used to locate the JWT token." value={form.jwtToken} onChange={(value) => update("jwtToken", value)} placeholder="example: $http_authorization" />
-        <TextField label="JWKS URI" description="Remote JWKS endpoint used to validate tokens." value={form.jwtJwksUri} onChange={(value) => update("jwtJwksUri", value)} placeholder="example: https://idp.example.com/.well-known/jwks.json" />
-        <TextField label="Key cache" description="How long JWKS keys should be cached." value={form.jwtKeyCache} onChange={(value) => update("jwtKeyCache", value)} placeholder="default: 12h" />
-        <SecretField label="Trusted cert secret" description="CA bundle used to verify the JWKS endpoint." value={form.jwtTrustedCertSecret} onChange={(value) => update("jwtTrustedCertSecret", value)} placeholder="example: idp-ca" />
-        <TextField label="SSL verify depth" description="Maximum certificate chain depth for the JWKS endpoint." value={form.jwtSslVerifyDepth} onChange={(value) => update("jwtSslVerifyDepth", value)} placeholder="default: 1" />
-        <TextField label="SNI name" description="Explicit server name used during TLS to the JWKS endpoint." value={form.jwtSniName} onChange={(value) => update("jwtSniName", value)} placeholder="example: idp.example.com" />
-        <BooleanSelectField label="Verify JWKS certificate" description="Require TLS certificate validation for the JWKS endpoint." value={form.jwtSslVerify} onChange={(value) => update("jwtSslVerify", value)} />
-        <BooleanSelectField label="Enable SNI" description="Send SNI when connecting to the JWKS endpoint." value={form.jwtSniEnabled} onChange={(value) => update("jwtSniEnabled", value)} />
+      <div className="settings-table">
+        <SettingsSelectField label="JWT source" description="Use a local JWK secret or fetch keys from a remote JWKS endpoint." value={form.jwtMode} onChange={(value) => update("jwtMode", value as JwtMode)} options={[{ value: "localSecret", label: "JWT Using Local Kubernetes Secret" }, { value: "remoteJwks", label: "JWT Using JWKS From Remote Location" }]} required />
+        <SettingsTextField label="Realm" description="Realm shown when JWT authentication fails." value={form.jwtRealm} onChange={(value) => update("jwtRealm", value)} placeholder="example: Closed Area" />
+        <SettingsTextField label="Token variable" description="Variable used to locate the JWT token." value={form.jwtToken} onChange={(value) => update("jwtToken", value)} placeholder="example: $http_authorization" />
+        {form.jwtMode === "localSecret" ? (
+          <SettingsSecretSelect label="JWK secret" description="Secret of type nginx.org/jwk." value={form.jwtSecret} onChange={(value) => update("jwtSecret", value)} clusterOptions={clusterOptions} onCreateResource={onCreateResource} secretType="nginx.org/jwk" namespace={form.namespace} required />
+        ) : (
+          <>
+            <SettingsTextField label="JWKS URI" description="Remote JWKS endpoint used to validate tokens." value={form.jwtJwksUri} onChange={(value) => update("jwtJwksUri", value)} placeholder="example: https://idp.example.com/.well-known/jwks.json" required />
+            <SettingsTextField label="Key cache" description="How long JWKS keys should be cached." value={form.jwtKeyCache} onChange={(value) => update("jwtKeyCache", value)} placeholder="default: 1h" />
+            <SettingsSecretSelect label="Trusted cert secret" description="CA secret used to verify the JWKS endpoint." value={form.jwtTrustedCertSecret} onChange={(value) => update("jwtTrustedCertSecret", value)} clusterOptions={clusterOptions} onCreateResource={onCreateResource} secretType="nginx.org/ca" namespace={form.namespace} />
+            <SettingsTextField label="SSL verify depth" description="Maximum certificate chain depth for the JWKS endpoint." value={form.jwtSslVerifyDepth} onChange={(value) => update("jwtSslVerifyDepth", value)} placeholder="default: 1" />
+            <SettingsTextField label="SNI name" description="Explicit server name used during TLS to the JWKS endpoint." value={form.jwtSniName} onChange={(value) => update("jwtSniName", value)} placeholder="example: idp.example.com" />
+            <SettingsToggleField label="Verify JWKS certificate" description="Require TLS certificate validation for the JWKS endpoint." checked={form.jwtSslVerify} onChange={(value) => update("jwtSslVerify", value)} />
+            <SettingsToggleField label="Enable SNI" description="Send SNI when connecting to the JWKS endpoint." checked={form.jwtSniEnabled} onChange={(value) => update("jwtSniEnabled", value)} />
+          </>
+        )}
       </div>
     );
   }
 
   if (form.policyType === "ingressMTLS") {
     return (
-      <div className="builder-grid">
-        <SecretField label="Client cert secret" description="Secret containing the CA used to verify client certificates." value={form.ingressMtlsClientCertSecret} onChange={(value) => update("ingressMtlsClientCertSecret", value)} placeholder="example: client-ca" />
-        <TextField label="CRL file name" description="Certificate revocation list file available in the controller." value={form.ingressMtlsCrlFileName} onChange={(value) => update("ingressMtlsCrlFileName", value)} placeholder="example: ca.crl" />
-        <SelectField label="Verify client" description="How strictly client certificates should be required and verified." value={form.ingressMtlsVerifyClient} onChange={(value) => update("ingressMtlsVerifyClient", value as VerifyClientMode)} options={verifyClientOptions} />
-        <TextField label="Verify depth" description="Maximum client certificate chain depth." value={form.ingressMtlsVerifyDepth} onChange={(value) => update("ingressMtlsVerifyDepth", value)} placeholder="default: 1" />
+      <div className="settings-table">
+        <SettingsSecretSelect label="Client cert secret" description="Secret of type nginx.org/ca." value={form.ingressMtlsClientCertSecret} onChange={(value) => update("ingressMtlsClientCertSecret", value)} clusterOptions={clusterOptions} onCreateResource={onCreateResource} secretType="nginx.org/ca" namespace={form.namespace} required />
+        <SettingsSelectField label="Verify client" description="How strictly client certificates should be required and verified." value={form.ingressMtlsVerifyClient} onChange={(value) => update("ingressMtlsVerifyClient", value as VerifyClientMode)} options={verifyClientOptions} />
+        <SettingsTextField label="Verify depth" description="Maximum client certificate chain depth." value={form.ingressMtlsVerifyDepth} onChange={(value) => update("ingressMtlsVerifyDepth", value)} placeholder="default: 1" />
+        <SettingsTextField label="CRL file name" description="Optional CRL file name mounted into the controller." value={form.ingressMtlsCrlFileName} onChange={(value) => update("ingressMtlsCrlFileName", value)} placeholder="example: ca.crl" />
       </div>
     );
   }
 
   if (form.policyType === "egressMTLS") {
     return (
-      <div className="builder-grid">
-        <SecretField label="TLS secret" description="Client certificate secret used when the ingress connects upstream." value={form.egressMtlsTlsSecret} onChange={(value) => update("egressMtlsTlsSecret", value)} placeholder="example: upstream-client-cert" />
-        <SecretField label="Trusted cert secret" description="CA secret used to verify the upstream server certificate." value={form.egressMtlsTrustedCertSecret} onChange={(value) => update("egressMtlsTrustedCertSecret", value)} placeholder="example: upstream-ca" />
-        <TextField label="Verify depth" description="Maximum upstream certificate chain depth." value={form.egressMtlsVerifyDepth} onChange={(value) => update("egressMtlsVerifyDepth", value)} placeholder="default: 1" />
-        <TextField label="Protocols" description="TLS protocol list used for upstream mTLS." value={form.egressMtlsProtocols} onChange={(value) => update("egressMtlsProtocols", value)} placeholder="example: TLSv1.2 TLSv1.3" />
-        <TextField label="Ciphers" description="Cipher suite override for upstream TLS connections." value={form.egressMtlsCiphers} onChange={(value) => update("egressMtlsCiphers", value)} placeholder="default: controller setting" />
-        <TextField label="SSL name" description="Override the server name used during upstream verification." value={form.egressMtlsSslName} onChange={(value) => update("egressMtlsSslName", value)} placeholder="example: upstream.example.com" />
-        <BooleanSelectField label="Verify upstream certificate" description="Require certificate validation when connecting upstream." value={form.egressMtlsVerifyServer} onChange={(value) => update("egressMtlsVerifyServer", value)} />
-        <BooleanSelectField label="Send server name (SNI)" description="Send the upstream hostname in TLS SNI." value={form.egressMtlsServerName} onChange={(value) => update("egressMtlsServerName", value)} />
-        <BooleanSelectField label="Reuse sessions" description="Reuse upstream TLS sessions for better performance." value={form.egressMtlsSessionReuse} onChange={(value) => update("egressMtlsSessionReuse", value)} />
+      <div className="settings-table">
+        <SettingsSecretSelect label="TLS secret" description="Secret of type kubernetes.io/tls for upstream client authentication." value={form.egressMtlsTlsSecret} onChange={(value) => update("egressMtlsTlsSecret", value)} clusterOptions={clusterOptions} onCreateResource={onCreateResource} secretType="kubernetes.io/tls" namespace={form.namespace} />
+        <SettingsSecretSelect label="Trusted cert secret" description="Secret of type nginx.org/ca for upstream server verification." value={form.egressMtlsTrustedCertSecret} onChange={(value) => update("egressMtlsTrustedCertSecret", value)} clusterOptions={clusterOptions} onCreateResource={onCreateResource} secretType="nginx.org/ca" namespace={form.namespace} />
+        <SettingsToggleField label="Verify upstream certificate" description="Require certificate validation when connecting upstream." checked={form.egressMtlsVerifyServer} onChange={(value) => update("egressMtlsVerifyServer", value)} />
+        <SettingsTextField label="Verify depth" description="Maximum upstream certificate chain depth." value={form.egressMtlsVerifyDepth} onChange={(value) => update("egressMtlsVerifyDepth", value)} placeholder="default: 1" />
+        <SettingsTextField label="Protocols" description="TLS protocol list used for upstream mTLS." value={form.egressMtlsProtocols} onChange={(value) => update("egressMtlsProtocols", value)} placeholder="default: TLSv1 TLSv1.1 TLSv1.2" />
+        <SettingsTextField label="Ciphers" description="Cipher suite override for upstream TLS connections." value={form.egressMtlsCiphers} onChange={(value) => update("egressMtlsCiphers", value)} placeholder="default: DEFAULT" />
+        <SettingsTextField label="SSL name" description="Override the server name used during upstream verification." value={form.egressMtlsSslName} onChange={(value) => update("egressMtlsSslName", value)} placeholder="example: upstream.example.com" />
+        <SettingsToggleField label="Send server name (SNI)" description="Send the upstream hostname in TLS SNI." checked={form.egressMtlsServerName} onChange={(value) => update("egressMtlsServerName", value)} />
+        <SettingsToggleField label="Reuse sessions" description="Reuse upstream TLS sessions for better performance." checked={form.egressMtlsSessionReuse} onChange={(value) => update("egressMtlsSessionReuse", value)} />
       </div>
     );
   }
 
   if (form.policyType === "externalAuth") {
     return (
-      <div className="builder-grid">
-        <TextField label="Auth URI" description="Internal URI where NGINX sends auth subrequests. Must start with /." value={form.externalAuthUri} onChange={(value) => update("externalAuthUri", value)} placeholder="example: /oauth2/auth" required />
-        <TextField label="Auth service" description="Service that receives auth subrequests. Use name or namespace/name." value={form.externalAuthServiceName} onChange={(value) => update("externalAuthServiceName", value)} placeholder="example: default/oauth2-proxy" />
-        <TextAreaField label="Auth service ports" description="One or more service ports for the auth service." value={form.externalAuthServicePorts} onChange={(value) => update("externalAuthServicePorts", value)} placeholder="example: 4180" />
-        <TextField label="Signin URI" description="URI where unauthenticated users are redirected." value={form.externalAuthSigninUri} onChange={(value) => update("externalAuthSigninUri", value)} placeholder="example: /oauth2/signin" />
-        <TextField label="Signin redirect base path" description="Base path used to build sign-in redirects." value={form.externalAuthSigninRedirectBasePath} onChange={(value) => update("externalAuthSigninRedirectBasePath", value)} placeholder="example: /oauth2" />
-        <SecretField label="Trusted cert secret" description="CA secret used to verify the auth service TLS certificate." value={form.externalAuthTrustedCertSecret} onChange={(value) => update("externalAuthTrustedCertSecret", value)} placeholder="example: external-auth-ca" />
-        <TextField label="SSL verify depth" description="Maximum certificate chain depth for the auth service." value={form.externalAuthSslVerifyDepth} onChange={(value) => update("externalAuthSslVerifyDepth", value)} placeholder="default: 1" />
-        <TextField label="SNI name" description="Server name used during TLS to the auth service." value={form.externalAuthSniName} onChange={(value) => update("externalAuthSniName", value)} placeholder="example: auth.example.com" />
-        <TextAreaField label="Auth snippets" description="Advanced directives injected into the generated auth location." value={form.externalAuthSnippets} onChange={(value) => update("externalAuthSnippets", value)} placeholder="" />
-        <BooleanSelectField label="Use TLS to auth service" description="Connect to the external auth service with TLS." value={form.externalAuthSslEnabled} onChange={(value) => update("externalAuthSslEnabled", value)} />
-        <BooleanSelectField label="Verify auth service certificate" description="Require TLS certificate validation for the auth service." value={form.externalAuthSslVerify} onChange={(value) => update("externalAuthSslVerify", value)} />
+      <div className="settings-table">
+        <SettingsTextField label="Auth URI" description="Internal URI where NGINX sends auth subrequests. Must start with /." value={form.externalAuthUri} onChange={(value) => update("externalAuthUri", value)} placeholder="example: /oauth2/auth" required />
+        <SettingsTextField label="Auth service" description="Service that receives auth subrequests. Use name or namespace/name." value={form.externalAuthServiceName} onChange={(value) => update("externalAuthServiceName", value)} placeholder="example: default/oauth2-proxy" required />
+        <SettingsTextAreaField label="Auth service ports" description="One or more service ports for the auth service." value={form.externalAuthServicePorts} onChange={(value) => update("externalAuthServicePorts", value)} placeholder="example: 4180" rows={2} />
+        <SettingsTextField label="Signin URI" description="URI where unauthenticated users are redirected." value={form.externalAuthSigninUri} onChange={(value) => update("externalAuthSigninUri", value)} placeholder="example: /oauth2/signin" />
+        <SettingsTextField label="Signin redirect base path" description="Base path used to build sign-in redirects." value={form.externalAuthSigninRedirectBasePath} onChange={(value) => update("externalAuthSigninRedirectBasePath", value)} placeholder="default: /oauth2" />
+        <SettingsSecretSelect label="Trusted cert secret" description="Secret of type nginx.org/ca used to verify the auth service." value={form.externalAuthTrustedCertSecret} onChange={(value) => update("externalAuthTrustedCertSecret", value)} clusterOptions={clusterOptions} onCreateResource={onCreateResource} secretType="nginx.org/ca" namespace={form.namespace} />
+        <SettingsToggleField label="Use TLS to auth service" description="Connect to the external auth service with TLS." checked={form.externalAuthSslEnabled} onChange={(value) => update("externalAuthSslEnabled", value)} />
+        <SettingsToggleField label="Verify auth service certificate" description="Require TLS certificate validation for the auth service." checked={form.externalAuthSslVerify} onChange={(value) => update("externalAuthSslVerify", value)} />
+        <SettingsTextField label="SSL verify depth" description="Maximum certificate chain depth for the auth service." value={form.externalAuthSslVerifyDepth} onChange={(value) => update("externalAuthSslVerifyDepth", value)} placeholder="default: 1" />
+        <SettingsTextField label="SNI name" description="Server name used during TLS to the auth service." value={form.externalAuthSniName} onChange={(value) => update("externalAuthSniName", value)} placeholder="default: service.namespace.svc" />
+        <SettingsTextAreaField label="Auth snippets" description="Advanced directives injected into the generated auth location." value={form.externalAuthSnippets} onChange={(value) => update("externalAuthSnippets", value)} placeholder="requires -enable-snippets" />
       </div>
     );
   }
 
   if (form.policyType === "oidc") {
     return (
-      <div className="builder-grid">
-        <TextField label="Client ID" description="OIDC client identifier registered with the provider." value={form.oidcClientId} onChange={(value) => update("oidcClientId", value)} placeholder="example: web-client" />
-        <SecretField label="Client secret" description="Kubernetes secret holding the OIDC client secret." value={form.oidcClientSecret} onChange={(value) => update("oidcClientSecret", value)} placeholder="example: oidc-client-secret" />
-        <TextField label="Auth endpoint" description="OIDC provider authorization endpoint URL." value={form.oidcAuthEndpoint} onChange={(value) => update("oidcAuthEndpoint", value)} placeholder="example: https://idp.example.com/auth" />
-        <TextField label="Token endpoint" description="OIDC provider token endpoint URL." value={form.oidcTokenEndpoint} onChange={(value) => update("oidcTokenEndpoint", value)} placeholder="example: https://idp.example.com/token" />
-        <TextField label="JWKS URI" description="OIDC provider key set endpoint URL." value={form.oidcJwksUri} onChange={(value) => update("oidcJwksUri", value)} placeholder="example: https://idp.example.com/keys" />
-        <TextField label="End session endpoint" description="OIDC logout endpoint URL." value={form.oidcEndSessionEndpoint} onChange={(value) => update("oidcEndSessionEndpoint", value)} placeholder="example: https://idp.example.com/logout" />
-        <TextField label="Redirect URI" description="Callback path for the authorization code exchange." value={form.oidcRedirectUri} onChange={(value) => update("oidcRedirectUri", value)} placeholder="example: /_codexch" />
-        <TextField label="Post-logout redirect URI" description="Path or URL to send users to after logout." value={form.oidcPostLogoutRedirectUri} onChange={(value) => update("oidcPostLogoutRedirectUri", value)} placeholder="example: /_logout" />
-        <TextField label="Scope" description="OIDC scopes requested during login." value={form.oidcScope} onChange={(value) => update("oidcScope", value)} placeholder="example: openid profile email" />
-        <SecretField label="Trusted cert secret" description="CA secret used to verify the OIDC provider." value={form.oidcTrustedCertSecret} onChange={(value) => update("oidcTrustedCertSecret", value)} placeholder="example: idp-ca" />
-        <TextField label="SSL verify depth" description="Maximum certificate chain depth for the OIDC provider." value={form.oidcSslVerifyDepth} onChange={(value) => update("oidcSslVerifyDepth", value)} placeholder="default: 1" />
-        <TextField label="Zone sync leeway" description="Milliseconds allowed for token sync between controller pods." value={form.oidcZoneSyncLeeway} onChange={(value) => update("oidcZoneSyncLeeway", value)} placeholder="default: 200" />
-        <TextAreaField label="Extra auth args" description="Additional provider-specific authorization parameters." value={form.oidcAuthExtraArgs} onChange={(value) => update("oidcAuthExtraArgs", value)} placeholder="example: prompt=login&#10;audience=api" />
-        <BooleanSelectField label="Pass access token to backend" description="Forward the access token to upstream applications." value={form.oidcAccessTokenEnable} onChange={(value) => update("oidcAccessTokenEnable", value)} />
-        <BooleanSelectField label="Enable PKCE" description="Use Proof Key for Code Exchange." value={form.oidcPkceEnable} onChange={(value) => update("oidcPkceEnable", value)} />
-        <BooleanSelectField label="Verify IdP certificate" description="Require TLS certificate validation for the OIDC provider." value={form.oidcSslVerify} onChange={(value) => update("oidcSslVerify", value)} />
+      <div className="settings-table">
+        <SettingsTextField label="Client ID" description="OIDC client identifier registered with the provider." value={form.oidcClientId} onChange={(value) => update("oidcClientId", value)} placeholder="example: web-client" required />
+        <SettingsSecretSelect label="Client secret" description="Secret of type nginx.org/oidc. Not used when PKCE is enabled." value={form.oidcClientSecret} onChange={(value) => update("oidcClientSecret", value)} clusterOptions={clusterOptions} onCreateResource={onCreateResource} secretType="nginx.org/oidc" namespace={form.namespace} required={!form.oidcPkceEnable} />
+        <SettingsTextField label="Auth endpoint" description="OIDC provider authorization endpoint URL." value={form.oidcAuthEndpoint} onChange={(value) => update("oidcAuthEndpoint", value)} placeholder="example: https://idp.example.com/auth" required />
+        <SettingsTextField label="Token endpoint" description="OIDC provider token endpoint URL." value={form.oidcTokenEndpoint} onChange={(value) => update("oidcTokenEndpoint", value)} placeholder="example: https://idp.example.com/token" required />
+        <SettingsTextField label="JWKS URI" description="OIDC provider key set endpoint URL." value={form.oidcJwksUri} onChange={(value) => update("oidcJwksUri", value)} placeholder="example: https://idp.example.com/keys" required />
+        <SettingsTextField label="End session endpoint" description="OIDC logout endpoint URL." value={form.oidcEndSessionEndpoint} onChange={(value) => update("oidcEndSessionEndpoint", value)} placeholder="example: https://idp.example.com/logout" />
+        <SettingsTextField label="Redirect URI" description="Callback path for the authorization code exchange." value={form.oidcRedirectUri} onChange={(value) => update("oidcRedirectUri", value)} placeholder="default: /_codexch" />
+        <SettingsTextField label="Post-logout redirect URI" description="Path or URL to send users to after logout." value={form.oidcPostLogoutRedirectUri} onChange={(value) => update("oidcPostLogoutRedirectUri", value)} placeholder="default: /_logout" />
+        <SettingsTextField label="Scope" description="OIDC scopes requested during login." value={form.oidcScope} onChange={(value) => update("oidcScope", value)} placeholder="default: openid" />
+        <SettingsSecretSelect label="Trusted cert secret" description="Secret of type nginx.org/ca used to verify the OIDC provider." value={form.oidcTrustedCertSecret} onChange={(value) => update("oidcTrustedCertSecret", value)} clusterOptions={clusterOptions} onCreateResource={onCreateResource} secretType="nginx.org/ca" namespace={form.namespace} />
+        <SettingsToggleField label="Enable PKCE" description="Use Proof Key for Code Exchange. Client secret is not used in this mode." checked={form.oidcPkceEnable} onChange={(value) => update("oidcPkceEnable", value)} />
+        <SettingsToggleField label="Verify IdP certificate" description="Require TLS certificate validation for the OIDC provider." checked={form.oidcSslVerify} onChange={(value) => update("oidcSslVerify", value)} />
+        <SettingsTextField label="SSL verify depth" description="Maximum certificate chain depth for the OIDC provider." value={form.oidcSslVerifyDepth} onChange={(value) => update("oidcSslVerifyDepth", value)} placeholder="default: 1" />
+        <SettingsTextField label="Zone sync leeway" description="Milliseconds allowed for token sync between controller pods." value={form.oidcZoneSyncLeeway} onChange={(value) => update("oidcZoneSyncLeeway", value)} placeholder="default: 200" />
+        <SettingsTextAreaField label="Extra auth args" description="Additional provider-specific authorization parameters." value={form.oidcAuthExtraArgs} onChange={(value) => update("oidcAuthExtraArgs", value)} placeholder="example: prompt=login" />
+        <SettingsToggleField label="Pass access token to backend" description="Forward the access token to upstream applications." checked={form.oidcAccessTokenEnable} onChange={(value) => update("oidcAccessTokenEnable", value)} />
       </div>
     );
   }
@@ -1300,14 +1593,32 @@ function PolicySettings({
 export function PolicyBuilderPanel({
   form,
   setForm,
+  policyTypeSelected,
+  setPolicyTypeSelected,
   setManifestText,
   setNotice,
   clusterOptions,
-  onCreateResource: _onCreateResource,
-}: { form: PolicyForm; setForm: Dispatch<SetStateAction<PolicyForm>> } & PropsCommon) {
+  onCreateResource,
+}: {
+  form: PolicyForm;
+  setForm: Dispatch<SetStateAction<PolicyForm>>;
+  policyTypeSelected: boolean;
+  setPolicyTypeSelected: Dispatch<SetStateAction<boolean>>;
+} & PropsCommon) {
   const update = <K extends keyof PolicyForm>(key: K, value: PolicyForm[K]) => setForm((current) => ({ ...current, [key]: value }));
   const apply = () => {
-    setManifestText(YAML.stringify(buildPolicyManifest(form)));
+    setManifestText(
+      YAML.stringify(
+        policyTypeSelected
+          ? buildPolicyManifest(form)
+          : {
+              apiVersion: "k8s.nginx.org/v1",
+              kind: "Policy",
+              metadata: { name: form.name, namespace: form.namespace },
+              spec: {},
+            },
+      ),
+    );
     setNotice(`Policy builder updated ${form.name}.`);
   };
 
@@ -1320,18 +1631,19 @@ export function PolicyBuilderPanel({
         </button>
       </div>
 
-      <Section title="General" description="Identity, namespace, class, and policy category" defaultOpen>
+      <Section title="General" description="Identity, namespace, and policy category" defaultOpen>
         <div className="builder-grid">
-          <TextField label="Name" description="The Kubernetes name of this Policy resource." value={form.name} onChange={(value) => update("name", value)} placeholder="example: rate-limit-policy" required />
+          <TextField label="Name" description="The Kubernetes name of this Policy resource." value={form.name} onChange={(value) => update("name", value)} placeholder="policy-name" required />
           <NamespaceField value={form.namespace} onChange={(value) => update("namespace", value)} clusterOptions={clusterOptions} />
-          <IngressClassField value={form.ingressClassName} onChange={(value) => update("ingressClassName", value)} clusterOptions={clusterOptions} />
-          <PolicyTypeField form={form} setForm={setForm} />
+          <PolicyTypeField form={form} setForm={setForm} onSelected={() => setPolicyTypeSelected(true)} selected={policyTypeSelected} />
         </div>
       </Section>
 
-      <Section title="Settings" description="All configurable options for the selected policy type" defaultOpen>
-        <PolicySettings form={form} update={update} />
-      </Section>
+      {policyTypeSelected ? (
+        <Section title="Settings" description="Options for the selected policy type" defaultOpen>
+          <PolicySettings form={form} update={update} clusterOptions={clusterOptions} onCreateResource={onCreateResource} />
+        </Section>
+      ) : null}
     </div>
   );
 }
@@ -1985,7 +2297,7 @@ export function SecretBuilderPanel({
 }: { form: SecretForm; setForm: Dispatch<SetStateAction<SecretForm>> } & PropsCommon) {
   const update = <K extends keyof SecretForm>(key: K, value: SecretForm[K]) => setForm((current) => ({ ...current, [key]: value }));
 
-  async function handleFileUpload(file: File | null, type: "certificate" | "privateKey") {
+  async function handleFileUpload(file: File | null, type: "certificate" | "privateKey" | "caCertificate" | "jwk") {
     if (!file) return;
     const text = await file.text();
     update(type, text);
@@ -1999,20 +2311,22 @@ export function SecretBuilderPanel({
   return (
     <div className="builder-panel">
       <div className="panel-heading">
-        <h3>TLS Secret builder</h3>
+        <h3>Secret builder</h3>
         <button type="button" className="secondary" onClick={apply}>
           Reflect in YAML
         </button>
       </div>
 
-      <Section title="General" description="Name and namespace for the TLS secret" defaultOpen>
+      <Section title="General" description="Name, namespace, and secret type" defaultOpen>
         <div className="builder-grid">
-          <TextField label="Secret name" description="The Kubernetes name of this TLS secret." value={form.name} onChange={(value) => update("name", value)} placeholder="example: cafe-secret" required />
+          <TextField label="Secret name" description="The Kubernetes name of this secret." value={form.name} onChange={(value) => update("name", value)} placeholder="tls-secret-name" required />
           <NamespaceField value={form.namespace} onChange={(value) => update("namespace", value)} clusterOptions={clusterOptions} />
+          <SelectField label="Secret type" description="Secret type expected by NGINX Ingress Controller policies." value={form.secretType} onChange={(value) => update("secretType", value as SecretType)} options={secretTypeOptions} required />
         </div>
       </Section>
 
-      <Section title="Certificate" description="Upload or paste the certificate and private key required by kubernetes.io/tls" defaultOpen>
+      {form.secretType === "kubernetes.io/tls" ? (
+      <Section title="TLS Certificate" description="Certificate and private key required by kubernetes.io/tls" defaultOpen>
         <div className="builder-grid">
           <div className="field">
             <span className="field-label">
@@ -2036,6 +2350,57 @@ export function SecretBuilderPanel({
           <TextAreaField label="Private key" description="PEM-encoded private key stored as tls.key." value={form.privateKey} onChange={(value) => update("privateKey", value)} placeholder="-----BEGIN PRIVATE KEY-----" rows={8} required />
         </div>
       </Section>
+      ) : null}
+
+      {form.secretType === "nginx.org/apikey" ? (
+        <Section title="API Key" description="Key/value data for nginx.org/apikey secrets" defaultOpen>
+          <div className="builder-grid">
+            <TextField label="Client name" description="Key name stored in the secret." value={form.apiKeyName} onChange={(value) => update("apiKeyName", value)} placeholder="example: client-a" required />
+            <TextField label="API key value" description="API key value stored under the client name." value={form.apiKeyValue} onChange={(value) => update("apiKeyValue", value)} placeholder="paste API key value" required />
+          </div>
+        </Section>
+      ) : null}
+
+      {form.secretType === "nginx.org/htpasswd" ? (
+        <Section title="Htpasswd" description="Basic auth credentials stored under htpasswd" defaultOpen>
+          <div className="builder-grid">
+            <TextAreaField label="Htpasswd" description="htpasswd file content." value={form.htpasswd} onChange={(value) => update("htpasswd", value)} placeholder="example: user:$apr1$..." rows={8} required />
+          </div>
+        </Section>
+      ) : null}
+
+      {form.secretType === "nginx.org/ca" ? (
+        <Section title="CA Certificate" description="CA certificate and optional CRL for nginx.org/ca" defaultOpen>
+          <div className="builder-grid">
+            <div className="field">
+              <span className="field-label">Upload CA certificate</span>
+              <input type="file" accept=".crt,.pem,.cer,text/plain" onChange={(event) => void handleFileUpload(event.target.files?.[0] ?? null, "caCertificate")} />
+            </div>
+            <TextAreaField label="CA certificate" description="PEM-encoded CA certificate stored as ca.crt." value={form.caCertificate} onChange={(value) => update("caCertificate", value)} placeholder="-----BEGIN CERTIFICATE-----" rows={8} required />
+            <TextAreaField label="Certificate revocation list" description="Optional CRL stored as ca.crl." value={form.caCrl} onChange={(value) => update("caCrl", value)} placeholder="optional PEM or CRL content" rows={6} />
+          </div>
+        </Section>
+      ) : null}
+
+      {form.secretType === "nginx.org/oidc" ? (
+        <Section title="OIDC Client Secret" description="Client secret stored under client-secret" defaultOpen>
+          <div className="builder-grid">
+            <TextField label="Client secret" description="OIDC client secret value." value={form.oidcClientSecret} onChange={(value) => update("oidcClientSecret", value)} placeholder="paste client secret" required />
+          </div>
+        </Section>
+      ) : null}
+
+      {form.secretType === "nginx.org/jwk" ? (
+        <Section title="JWT JWK" description="JWK content stored under jwk" defaultOpen>
+          <div className="builder-grid">
+            <div className="field">
+              <span className="field-label">Upload JWK</span>
+              <input type="file" accept=".json,application/json,text/plain" onChange={(event) => void handleFileUpload(event.target.files?.[0] ?? null, "jwk")} />
+            </div>
+            <TextAreaField label="JWK" description="JSON Web Key or key set content." value={form.jwk} onChange={(value) => update("jwk", value)} placeholder='{"keys":[]}' rows={8} required />
+          </div>
+        </Section>
+      ) : null}
     </div>
   );
 }

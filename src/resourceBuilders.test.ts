@@ -1,11 +1,142 @@
 import { describe, expect, it } from "vitest";
 import {
   buildPolicyManifest,
+  buildSecretManifest,
   defaultPolicyForm,
+  defaultSecretForm,
   parsePolicyManifest,
+  parseSecretManifest,
 } from "./resourceBuilders";
 
 describe("policy manifest builder", () => {
+  it("uses neutral default names for policies and secrets", () => {
+    expect(defaultPolicyForm("rateLimit").name).toBe("policy-name");
+    expect(defaultSecretForm().name).toBe("tls-secret-name");
+  });
+
+  it("builds typed NGINX secrets used by policies", () => {
+    expect(
+      buildSecretManifest({
+        ...defaultSecretForm(),
+        name: "api-key-secret",
+        secretType: "nginx.org/apikey",
+        apiKeyName: "client-a",
+        apiKeyValue: "secret-value",
+      }),
+    ).toMatchObject({
+      type: "nginx.org/apikey",
+      stringData: { "client-a": "secret-value" },
+    });
+
+    expect(
+      buildSecretManifest({
+        ...defaultSecretForm(),
+        name: "basic-auth-secret",
+        secretType: "nginx.org/htpasswd",
+        htpasswd: "user:$apr1$hash",
+      }),
+    ).toMatchObject({
+      type: "nginx.org/htpasswd",
+      stringData: { htpasswd: "user:$apr1$hash" },
+    });
+
+    expect(
+      buildSecretManifest({
+        ...defaultSecretForm(),
+        name: "ca-secret",
+        secretType: "nginx.org/ca",
+        caCertificate: "-----BEGIN CERTIFICATE-----",
+      }),
+    ).toMatchObject({
+      type: "nginx.org/ca",
+      stringData: { "ca.crt": "-----BEGIN CERTIFICATE-----" },
+    });
+
+    expect(
+      buildSecretManifest({
+        ...defaultSecretForm(),
+        name: "oidc-secret",
+        secretType: "nginx.org/oidc",
+        oidcClientSecret: "oidc-client-secret",
+      }),
+    ).toMatchObject({
+      type: "nginx.org/oidc",
+      stringData: { "client-secret": "oidc-client-secret" },
+    });
+
+    expect(
+      buildSecretManifest({
+        ...defaultSecretForm(),
+        name: "jwk-secret",
+        secretType: "nginx.org/jwk",
+        jwk: '{"keys":[]}',
+      }),
+    ).toMatchObject({
+      type: "nginx.org/jwk",
+      stringData: { jwk: '{"keys":[]}' },
+    });
+  });
+
+  it("parses typed secrets back into the secret form", () => {
+    const form = parseSecretManifest({
+      apiVersion: "v1",
+      kind: "Secret",
+      metadata: { name: "trusted-ca", namespace: "default" },
+      type: "nginx.org/ca",
+      stringData: { "ca.crt": "cert", "ca.crl": "crl" },
+    });
+
+    expect(form.secretType).toBe("nginx.org/ca");
+    expect(form.caCertificate).toBe("cert");
+    expect(form.caCrl).toBe("crl");
+  });
+
+  it("builds API key policies with a selected secret and single supplied location", () => {
+    const form = defaultPolicyForm("apiKey");
+    form.apiKeyClientSecret = "api-key-secret";
+    form.apiKeySuppliedIn = "query";
+    form.apiKeySuppliedQuery = "apikey";
+
+    expect(buildPolicyManifest(form).spec).toEqual({
+      apiKey: {
+        clientSecret: "api-key-secret",
+        suppliedIn: { query: ["apikey"] },
+      },
+    });
+  });
+
+  it("builds JWT policies from either local secret or remote JWKS only", () => {
+    const local = defaultPolicyForm("jwt");
+    local.jwtMode = "localSecret";
+    local.jwtSecret = "jwk-secret";
+    local.jwtJwksUri = "https://idp.example.com/jwks";
+
+    expect(buildPolicyManifest(local).spec).toEqual({
+      jwt: {
+        realm: "Closed Area",
+        secret: "jwk-secret",
+        token: "$http_authorization",
+      },
+    });
+
+    const remote = defaultPolicyForm("jwt");
+    remote.jwtMode = "remoteJwks";
+    remote.jwtSecret = "jwk-secret";
+    remote.jwtJwksUri = "https://idp.example.com/jwks";
+    remote.jwtTrustedCertSecret = "idp-ca";
+
+    expect(buildPolicyManifest(remote).spec).toEqual({
+      jwt: {
+        realm: "Closed Area",
+        token: "$http_authorization",
+        jwksURI: "https://idp.example.com/jwks",
+        keyCache: "1h",
+        trustedCertSecret: "idp-ca",
+        sslVerifyDepth: 1,
+      },
+    });
+  });
+
   it("builds externalAuth policies with current fields", () => {
     const form = defaultPolicyForm("externalAuth");
     form.externalAuthUri = "/oauth2/auth";
