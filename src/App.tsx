@@ -2,6 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import YAML from "yaml";
 import { fetchJson, uploadKubeconfig } from "./api";
 import {
+  appModeLabels,
+  builderResourceKinds,
+  combineYamlDocuments,
+  getManifestActionLabel,
+  type AppMode,
+} from "./appMode";
+import {
   buildGlobalConfigurationManifest,
   buildPolicyManifest,
   buildSecretManifest,
@@ -122,6 +129,17 @@ function effectiveNamespace(namespace: string) {
   return namespace === "__all__" ? "default" : namespace || "default";
 }
 
+function emptyClusterOptions(): ClusterOptions {
+  return {
+    namespaces: [],
+    ingressClasses: [],
+    policies: [],
+    dosResources: [],
+    tlsSecrets: [],
+    listeners: [],
+  };
+}
+
 function starterManifest(kind: string, namespace: string) {
   if (kind === "Policy") {
     return YAML.stringify({
@@ -228,16 +246,10 @@ function App() {
     ),
   );
   const [status, setStatus] = useState<SessionStatus>({ connected: false });
+  const [appMode, setAppMode] = useState<AppMode | null>(null);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [overview, setOverview] = useState<Overview | null>(null);
-  const [clusterOptions, setClusterOptions] = useState<ClusterOptions>({
-    namespaces: [],
-    ingressClasses: [],
-    policies: [],
-    dosResources: [],
-    tlsSecrets: [],
-    listeners: [],
-  });
+  const [clusterOptions, setClusterOptions] = useState<ClusterOptions>(() => emptyClusterOptions());
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [kubeconfigText, setKubeconfigText] = useState("");
   const [selected, setSelected] = useState<SelectedResource | null>(null);
@@ -260,6 +272,7 @@ function App() {
   const skipManifestParseRef = useRef(false);
   const [selectedResourceKeys, setSelectedResourceKeys] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [generatedManifests, setGeneratedManifests] = useState<string[]>([]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -330,20 +343,14 @@ function App() {
       }
     } else {
       setOverview(null);
-      setClusterOptions({
-        namespaces: [],
-        ingressClasses: [],
-        policies: [],
-        dosResources: [],
-        tlsSecrets: [],
-        listeners: [],
-      });
+      setClusterOptions(emptyClusterOptions());
     }
   }
 
   useEffect(() => {
+    if (appMode !== "manager") return;
     void refreshOverview().catch((err: Error) => setError(err.message));
-  }, []);
+  }, [appMode]);
 
   useEffect(() => {
     if (skipManifestParseRef.current) {
@@ -388,6 +395,30 @@ function App() {
       setNotice(`Connected to ${nextStatus.currentContext ?? "the selected cluster"}.`);
     } catch (err) {
       setError((err as Error).message);
+    }
+  }
+
+  function selectMode(nextMode: AppMode) {
+    setAppMode(nextMode);
+    setError(null);
+    setNotice(null);
+    setSelected(null);
+    setSelectedResourceKeys([]);
+    setCreateOverlay(null);
+    setGeneratedManifests([]);
+
+    if (nextMode === "generator") {
+      setStatus({ connected: false });
+      setCatalog(null);
+      setOverview(null);
+      setClusterOptions(emptyClusterOptions());
+      setViewMode("list");
+      setCreateKind("VirtualServer");
+      setCreateNamespace("default");
+      setManifestText(emptyManifest);
+    } else {
+      setViewMode("list");
+      setManifestText(emptyManifest);
     }
   }
 
@@ -531,6 +562,10 @@ function App() {
       setSaving(true);
       setError(null);
       const parsed = YAML.parse(manifestText) as Record<string, unknown>;
+      if (appMode === "generator") {
+        await copyYaml([manifestText]);
+        return;
+      }
       await submitResourceManifest(parsed, {
         onCreated: (_value) => {
           const metadata = parsed.metadata as Record<string, unknown> | undefined;
@@ -550,28 +585,86 @@ function App() {
     }
   }
 
+  function callOnCreated(
+    manifest: Record<string, unknown>,
+    options?: { onCreated?: (value: string) => void },
+  ) {
+    if (!options?.onCreated) return;
+
+    const metadata = (manifest.metadata ?? {}) as Record<string, unknown>;
+    if (manifest.kind === "GlobalConfiguration") {
+      const listeners = ((((manifest.spec ?? {}) as Record<string, unknown>).listeners ?? []) as Array<Record<string, unknown>>);
+      options.onCreated(String(listeners[0]?.name ?? ""));
+    } else if (typeof metadata.namespace === "string" && typeof metadata.name === "string") {
+      options.onCreated(`${metadata.namespace}/${metadata.name}`);
+    } else if (typeof metadata.name === "string") {
+      options.onCreated(String(metadata.name));
+    }
+  }
+
   async function submitResourceManifest(
     manifest: Record<string, unknown>,
     options?: { onCreated?: (value: string) => void },
   ) {
+    const metadata = (manifest.metadata ?? {}) as Record<string, unknown>;
+
+    if (appMode === "generator") {
+      const serialized = YAML.stringify(manifest);
+      setGeneratedManifests((current) => (current.includes(serialized) ? current : [...current, serialized]));
+      callOnCreated(manifest, options);
+      setNotice(`${String(manifest.kind)} ${String(metadata.name ?? "")} added to generated YAML.`);
+      return;
+    }
+
     await fetchJson("/api/resource", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(manifest),
     });
     await refreshOverview();
-    const metadata = (manifest.metadata ?? {}) as Record<string, unknown>;
-    if (options?.onCreated) {
-      if (manifest.kind === "GlobalConfiguration") {
-        const listeners = ((((manifest.spec ?? {}) as Record<string, unknown>).listeners ?? []) as Array<Record<string, unknown>>);
-        options.onCreated(String(listeners[0]?.name ?? ""));
-      } else if (typeof metadata.namespace === "string" && typeof metadata.name === "string") {
-        options.onCreated(`${metadata.namespace}/${metadata.name}`);
-      } else if (typeof metadata.name === "string") {
-        options.onCreated(String(metadata.name));
-      }
-    }
+    callOnCreated(manifest, options);
     setNotice(`${String(manifest.kind)} ${String(metadata.name ?? "")} saved.`);
+  }
+
+  async function copyYaml(extraManifests: string[] = []) {
+    const yamlText = combineYamlDocuments([...generatedManifests, ...extraManifests]);
+
+    if (!yamlText) {
+      throw new Error("No YAML has been generated yet.");
+    }
+
+    await copyTextToClipboard(yamlText);
+    setNotice(
+      yamlText.includes("\n---\n")
+        ? `${yamlText.split("\n---\n").length} YAML documents copied.`
+        : "YAML copied to clipboard.",
+    );
+  }
+
+  async function copyTextToClipboard(text: string) {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+    } catch {
+      // Fall back to a temporary selection below when the Clipboard API rejects.
+    }
+
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.left = "-9999px";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    const copied = document.execCommand("copy");
+    document.body.removeChild(textarea);
+
+    if (!copied) {
+      throw new Error("Clipboard access is not available in this browser. Select the YAML and copy it manually.");
+    }
   }
 
   async function saveOverlayManifest() {
@@ -613,9 +706,12 @@ function App() {
     }
   }
 
-  const sidebarResourceKinds = (catalog?.resourceCatalog ?? [])
-    .map((entry) => entry.kind)
-    .filter((kind) => !["Deployment", "DaemonSet", "StatefulSet"].includes(kind));
+  const sidebarResourceKinds =
+    appMode === "generator"
+      ? builderResourceKinds
+      : (catalog?.resourceCatalog ?? [])
+          .map((entry) => entry.kind)
+          .filter((kind) => !["Deployment", "DaemonSet", "StatefulSet"].includes(kind));
   const activeResourceItems = filterResourcesByNamespace(
     createKind === "ConfigMap" ? overview?.configMaps ?? [] : overview?.resources[createKind] ?? [],
     createNamespace,
@@ -657,11 +753,12 @@ function App() {
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">
-          <p className="eyebrow">Remote Kubernetes Control Plane</p>
+          <p className="eyebrow">{appMode ? appModeLabels[appMode] : "Ingress workspace"}</p>
           <h1>NGINX Plus Ingress Manager</h1>
           <p className="lede">
-            Inspect the controller, import kubeconfig, review live NGINX resources, and apply safe edits back to your
-            remote clusters.
+            {appMode === "generator"
+              ? "Build NGINX Ingress manifests without connecting to a Kubernetes cluster, then copy YAML for manual apply."
+              : "Inspect the controller, import kubeconfig, review live NGINX resources, and apply safe edits back to your remote clusters."}
           </p>
           <div className="theme-toggle" role="group" aria-label="Theme">
             {(["light", "dark"] as const).map((option) => (
@@ -678,6 +775,32 @@ function App() {
           </div>
         </div>
 
+        {appMode && (
+          <section className="panel">
+            <div className="panel-heading">
+              <h2>Mode</h2>
+              <span className="pill">{appModeLabels[appMode]}</span>
+            </div>
+            <div className="mode-switcher" role="group" aria-label="Application mode">
+              <button
+                type="button"
+                className={appMode === "manager" ? "active" : ""}
+                onClick={() => selectMode("manager")}
+              >
+                Manager
+              </button>
+              <button
+                type="button"
+                className={appMode === "generator" ? "active" : ""}
+                onClick={() => selectMode("generator")}
+              >
+                Config-Generator
+              </button>
+            </div>
+          </section>
+        )}
+
+        {appMode === "manager" && (
         <section className="panel">
           <div className="panel-heading">
             <h2>Connection</h2>
@@ -701,8 +824,9 @@ function App() {
             Import kubeconfig
           </button>
         </section>
+        )}
 
-        {overview && (
+        {(appMode === "generator" || overview) && (
           <section className="panel scroller">
             <div className="panel-heading">
               <h2>Resources</h2>
@@ -710,7 +834,12 @@ function App() {
             </div>
             <div className="resource-kind-list">
               {sidebarResourceKinds.map((kind) => {
-                const count = kind === "ConfigMap" ? overview.configMaps.length : overview.resources[kind]?.length ?? 0;
+                const count =
+                  appMode === "generator"
+                    ? null
+                    : kind === "ConfigMap"
+                      ? overview?.configMaps.length ?? 0
+                      : overview?.resources[kind]?.length ?? 0;
                 return (
                   <button
                     key={kind}
@@ -723,7 +852,7 @@ function App() {
                     }}
                   >
                     <span>{kind}</span>
-                    <strong>{count}</strong>
+                    <strong>{appMode === "generator" ? "build" : count}</strong>
                   </button>
                 );
               })}
@@ -736,7 +865,25 @@ function App() {
         {error && <div className="banner error">{error}</div>}
         {notice && <div className="banner success">{notice}</div>}
 
-        {!status.connected && (
+        {!appMode && (
+          <section className="mode-choice empty-state">
+            <h3>Choose how you want to work</h3>
+            <div className="mode-choice-grid">
+              <button type="button" className="mode-card" onClick={() => selectMode("manager")}>
+                <span>Manager mode</span>
+                <strong>Connect to Kubernetes</strong>
+                <small>Import kubeconfig, list resources, and apply changes directly to the selected cluster.</small>
+              </button>
+              <button type="button" className="mode-card" onClick={() => selectMode("generator")}>
+                <span>Config-Generator mode</span>
+                <strong>Generate YAML only</strong>
+                <small>Use the builders without cluster access, copy YAML, and apply it manually later.</small>
+              </button>
+            </div>
+          </section>
+        )}
+
+        {appMode === "manager" && !status.connected && (
           <section className="empty-state">
             <h3>Import a kubeconfig to begin</h3>
             <p>
@@ -766,7 +913,11 @@ function App() {
                 <strong>{Object.values(overview.resources).reduce((total, items) => total + items.length, 0)}</strong>
               </article>
             </section>
+          </>
+        )}
 
+        {(appMode === "generator" || overview) && (
+          <>
             <section className={`workspace ${viewMode === "edit" ? "expanded" : "list-only"}`}>
               {viewMode === "list" && (
               <div className="editor-panel resource-browser resource-browser-wide">
@@ -774,11 +925,13 @@ function App() {
                   <h3>{createKind}</h3>
                   <div className="editor-actions">
                     <button className="secondary" onClick={() => void createTemplate(createKind)}>
-                      Create
+                      {appMode === "generator" ? "Generate" : "Create"}
                     </button>
-                    <button className="danger" disabled={deleting || selectedResourceKeys.length === 0} onClick={() => void deleteSelectedResources()}>
-                      {deleting ? "Deleting..." : `Delete${selectedResourceKeys.length ? ` (${selectedResourceKeys.length})` : ""}`}
-                    </button>
+                    {appMode === "manager" && (
+                      <button className="danger" disabled={deleting || selectedResourceKeys.length === 0} onClick={() => void deleteSelectedResources()}>
+                        {deleting ? "Deleting..." : `Delete${selectedResourceKeys.length ? ` (${selectedResourceKeys.length})` : ""}`}
+                      </button>
+                    )}
                   </div>
                 </div>
                 <label className="field namespace-filter">
@@ -792,7 +945,9 @@ function App() {
                   </select>
                 </label>
                 <div className="resource-group">
-                  {activeResourceItems.length === 0 ? (
+                  {appMode === "generator" ? (
+                    <p className="muted">No cluster connection is required. Generate a {createKind} manifest and copy the YAML.</p>
+                  ) : activeResourceItems.length === 0 ? (
                     <p className="muted">No {createKind} resources found in the cluster.</p>
                   ) : (
                     activeResourceItems.map((resource) => {
@@ -866,13 +1021,13 @@ function App() {
                     >
                       Cancel
                     </button>
-                    {selected && (
+                    {appMode === "manager" && selected && (
                       <button className="danger" disabled={deleting} onClick={() => void deleteSelectedResource()}>
                         {deleting ? "Deleting..." : "Delete"}
                       </button>
                     )}
                     <button className="primary" disabled={saving} onClick={() => void saveManifest()}>
-                      {saving ? "Saving..." : "Apply manifest"}
+                      {getManifestActionLabel(appMode ?? "manager", saving)}
                     </button>
                   </div>
                 </div>
@@ -901,7 +1056,7 @@ function App() {
                     Cancel
                   </button>
                   <button className="primary" disabled={overlaySaving} onClick={() => void saveOverlayManifest()}>
-                    {overlaySaving ? "Applying..." : "Apply"}
+                    {appMode === "generator" ? (overlaySaving ? "Adding..." : "Add YAML") : (overlaySaving ? "Applying..." : "Apply")}
                   </button>
                 </div>
               </div>

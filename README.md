@@ -4,13 +4,14 @@ Dockerized web app for managing NGINX Ingress Controller resources from a browse
 
 ## Overview
 
-Import a kubeconfig, inspect NGINX Ingress Controller resources, and create or update Kubernetes manifests through guided forms or raw YAML. Each user's kubeconfig is kept in that user's server-side browser session only. The app does not write uploaded kubeconfigs or pasted credentials to local files.
+Use Manager mode to import a kubeconfig, inspect NGINX Ingress Controller resources, and create or update Kubernetes manifests through guided forms or raw YAML. Use Config-Generator mode when you only need to build manifests and copy YAML for a later manual `kubectl apply`. Each user's kubeconfig is kept in that user's server-side browser session only. The app does not write uploaded kubeconfigs or pasted credentials to local files.
 
 ## Features
 
 - Browse namespaces, controller workloads, ConfigMaps, TLS Secrets, and NGINX custom resources.
 - Create and edit `VirtualServer`, `VirtualServerRoute`, `TransportServer`, `Policy`, `GlobalConfiguration`, and TLS `Secret` manifests.
 - Use guided builders with cluster-aware options, or edit the generated YAML directly.
+- Generate configuration without a Kubernetes connection in Config-Generator mode.
 - Apply and delete resources through the Kubernetes API.
 - Switch between light and dark themes.
 
