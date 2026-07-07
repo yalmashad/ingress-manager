@@ -198,6 +198,8 @@ function simplifyResourceList(items: AnyRecord[]) {
     creationTimestamp: item.metadata?.creationTimestamp,
     labels: item.metadata?.labels ?? {},
     state: item.status?.state ?? item.status?.phase ?? null,
+    reason: item.status?.reason ?? null,
+    message: item.status?.message ?? null,
     summary:
       (item.kind === "Secret" ? ingressPolicySecretTypeLabel(item.type) : null) ??
       item.spec?.host ??

@@ -70,6 +70,8 @@ type ResourceSummary = {
   creationTimestamp?: string;
   labels: Record<string, string>;
   state?: string | null;
+  reason?: string | null;
+  message?: string | null;
   summary?: string | null;
 };
 
@@ -121,6 +123,62 @@ type ViewMode = "list" | "edit";
 function badgeText(summary: ResourceSummary) {
   return summary.state || summary.summary || summary.namespace || "cluster";
 }
+
+function resourceStatusDetail(summary: ResourceSummary) {
+  if (summary.reason && summary.message) {
+    return `${summary.reason}: ${summary.message}`;
+  }
+  return summary.message || summary.reason || null;
+}
+
+function resourceStatusTone(summary: Pick<ResourceSummary, "state" | "reason">) {
+  const state = (summary.state ?? "").toLowerCase();
+  const reason = (summary.reason ?? "").toLowerCase();
+  if (!state) return "neutral";
+  if (["valid", "active", "running"].includes(state)) return "success";
+  if (["invalid", "rejected", "failed", "failure", "error"].some((marker) => state.includes(marker) || reason.includes(marker))) {
+    return "error";
+  }
+  return "warning";
+}
+
+function compactControllerMessage(message: string, maxLength = 260) {
+  const normalized = message.replace(/\s+/g, " ").trim();
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 1)}...` : normalized;
+}
+
+function controllerStatusNotice(kind: string, name: string, resource: Record<string, unknown> | null) {
+  const status = (resource?.status ?? {}) as Record<string, unknown>;
+  const state = typeof status.state === "string" ? status.state : typeof status.phase === "string" ? status.phase : "";
+  const reason = typeof status.reason === "string" ? status.reason : "";
+  const message = typeof status.message === "string" ? compactControllerMessage(status.message) : "";
+  const resourceName = `${kind} ${name}`.trim();
+
+  if (!state) {
+    return {
+      tone: "warning" as const,
+      text: `${resourceName} was accepted by the Kubernetes API. Waiting for NGINX Ingress Controller status.`,
+    };
+  }
+
+  const detail = [reason, message].filter(Boolean).join(": ");
+  const statusText = detail ? `${state} (${detail})` : state;
+  return {
+    tone: resourceStatusTone({ state, reason }) === "success" ? ("success" as const) : ("warning" as const),
+    text:
+      resourceStatusTone({ state, reason }) === "success"
+        ? `${resourceName} applied and the controller reports ${statusText}.`
+        : `${resourceName} was accepted by the Kubernetes API, but the controller reports ${statusText}.`,
+  };
+}
+
+const controllerStatusKinds = new Set([
+  "VirtualServer",
+  "VirtualServerRoute",
+  "TransportServer",
+  "Policy",
+  "GlobalConfiguration",
+]);
 
 function resourceKeyOf(resource: Pick<ResourceSummary, "name" | "namespace">) {
   return `${resource.namespace ?? "cluster"}::${resource.name}`;
@@ -331,6 +389,7 @@ function App() {
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [noticeTone, setNoticeTone] = useState<"success" | "warning">("success");
   const [unsupportedFieldPaths, setUnsupportedFieldPaths] = useState<string[]>([]);
   const [createKind, setCreateKind] = useState("VirtualServer");
   const [createNamespace, setCreateNamespace] = useState("default");
@@ -349,6 +408,11 @@ function App() {
   const [selectedResourceKeys, setSelectedResourceKeys] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [generatedManifests, setGeneratedManifests] = useState<string[]>([]);
+
+  function showNotice(text: string, tone: "success" | "warning" = "success") {
+    setNoticeTone(tone);
+    setNotice(text);
+  }
 
   function clearManifestPreservation() {
     rawManifestRef.current = null;
@@ -461,7 +525,7 @@ function App() {
     if (nextOptions.namespaces.length > 0) {
       setCreateNamespace(nextOptions.namespaces[0]);
     }
-    setNotice(`Connected to ${nextStatus.currentContext ?? "the selected cluster"}.`);
+    showNotice(`Connected to ${nextStatus.currentContext ?? "the selected cluster"}.`);
   }
 
   useEffect(() => {
@@ -503,7 +567,7 @@ function App() {
         setOverview(null);
         setClusterOptions(emptyClusterOptions());
         setSelectedKubeContext(nextStatus.currentContext && nextStatus.contexts.includes(nextStatus.currentContext) ? nextStatus.currentContext : nextStatus.contexts[0]);
-        setNotice("Select a kubeconfig context to connect to one cluster.");
+        showNotice("Select a kubeconfig context to connect to one cluster.", "warning");
         return;
       }
 
@@ -663,13 +727,13 @@ function App() {
         setSecretForm(next);
         skipManifestParseRef.current = true;
         setManifestText(YAML.stringify(buildSecretManifest(next)));
-        setNotice("Loaded a TLS Secret builder.");
+        showNotice("Loaded a TLS Secret builder.");
         return;
       }
       if (kind === "DosProtectedResource") {
         skipManifestParseRef.current = true;
         setManifestText(starterManifest("DosProtectedResource", effectiveNamespace(createNamespace)));
-        setNotice("Loaded a DOS resource starter manifest.");
+        showNotice("Loaded a DOS resource starter manifest.");
         return;
       }
       skipManifestParseRef.current = true;
@@ -755,6 +819,36 @@ function App() {
     }
   }
 
+  async function readSavedResource(manifest: Record<string, unknown>) {
+    const metadata = (manifest.metadata ?? {}) as Record<string, unknown>;
+    const kind = typeof manifest.kind === "string" ? manifest.kind : "";
+    const name = typeof metadata.name === "string" ? metadata.name : "";
+    if (!kind || !name) return null;
+
+    const params = new URLSearchParams({ kind, name });
+    if (typeof metadata.namespace === "string") params.set("namespace", metadata.namespace);
+    return fetchJson<Record<string, unknown>>(`/api/resource?${params.toString()}`);
+  }
+
+  async function waitForControllerStatus(manifest: Record<string, unknown>) {
+    let latest: Record<string, unknown> | null = null;
+    if (!controllerStatusKinds.has(String(manifest.kind ?? ""))) {
+      return readSavedResource(manifest);
+    }
+
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      latest = await readSavedResource(manifest);
+      const status = (latest?.status ?? {}) as Record<string, unknown>;
+      const state = typeof status.state === "string" ? status.state : typeof status.phase === "string" ? status.phase : "";
+      const reason = typeof status.reason === "string" ? status.reason : "";
+      if (resourceStatusTone({ state, reason }) === "success") {
+        return latest;
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 750));
+    }
+    return latest;
+  }
+
   async function submitResourceManifest(
     manifest: Record<string, unknown>,
     options?: { onCreated?: (value: string) => void },
@@ -769,7 +863,7 @@ function App() {
       const serialized = YAML.stringify(manifest);
       setGeneratedManifests((current) => (current.includes(serialized) ? current : [...current, serialized]));
       callOnCreated(manifest, options);
-      setNotice(`${String(manifest.kind)} ${String(metadata.name ?? "")} added to generated YAML.`);
+      showNotice(`${String(manifest.kind)} ${String(metadata.name ?? "")} added to generated YAML.`);
       return;
     }
 
@@ -778,9 +872,17 @@ function App() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(manifest),
     });
+    const savedResource = await waitForControllerStatus(manifest);
     await refreshOverview();
     callOnCreated(manifest, options);
-    setNotice(`${String(manifest.kind)} ${String(metadata.name ?? "")} saved.`);
+    const kind = String(manifest.kind);
+    const name = String(metadata.name ?? "");
+    if (controllerStatusKinds.has(kind)) {
+      const statusNotice = controllerStatusNotice(kind, name, savedResource);
+      showNotice(statusNotice.text, statusNotice.tone);
+      return;
+    }
+    showNotice(`${kind} ${name} saved.`);
   }
 
   async function copyYaml(extraManifests: string[] = []) {
@@ -791,7 +893,7 @@ function App() {
     }
 
     await copyTextToClipboard(yamlText);
-    setNotice(
+    showNotice(
       yamlText.includes("\n---\n")
         ? `${yamlText.split("\n---\n").length} YAML documents copied.`
         : "YAML copied to clipboard.",
@@ -852,7 +954,7 @@ function App() {
       const params = new URLSearchParams({ kind: selected.kind, name: selected.name });
       if (selected.namespace) params.set("namespace", selected.namespace);
       await fetchJson(`/api/resource?${params.toString()}`, { method: "DELETE" });
-      setNotice(`${selected.kind} ${selected.name} deleted.`);
+      showNotice(`${selected.kind} ${selected.name} deleted.`);
       setSelected(null);
       setManifestText(emptyManifest);
       await refreshOverview();
@@ -897,7 +999,7 @@ function App() {
         setViewMode("list");
       }
       setSelectedResourceKeys([]);
-      setNotice(`${targets.length} ${createKind} resource(s) deleted.`);
+      showNotice(`${targets.length} ${createKind} resource(s) deleted.`);
       await refreshOverview();
     } catch (err) {
       setError((err as Error).message);
@@ -1031,7 +1133,7 @@ function App() {
 
       <main className="main">
         {error && <div className="banner error">{error}</div>}
-        {notice && <div className="banner success">{notice}</div>}
+        {notice && <div className={`banner ${noticeTone}`}>{notice}</div>}
 
         {!appMode && (
           <section className="mode-choice empty-state">
@@ -1145,7 +1247,13 @@ function App() {
                               <small>{resource.namespace ?? "cluster"}</small>
                             </span>
                           </span>
-                          <strong>{badgeText(resource)}</strong>
+                          <span
+                            className={`resource-status ${resourceStatusTone(resource)}`}
+                            title={resourceStatusDetail(resource) ?? undefined}
+                          >
+                            <strong>{badgeText(resource)}</strong>
+                            {resourceStatusDetail(resource) && <small>{resourceStatusDetail(resource)}</small>}
+                          </span>
                         </button>
                       );
                     })

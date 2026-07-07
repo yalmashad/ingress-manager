@@ -12,6 +12,7 @@
   --brand: #2563eb;
   --brand-strong: #1d4ed8;
   --accent: #0f9f8c;
+  --success: #0f9f8c;
   --danger: #dc2626;
   --warning: #f97316;
   --shadow: 0 18px 45px rgba(15, 23, 42, 0.11);
@@ -32,6 +33,7 @@
   --brand: #60a5fa;
   --brand-strong: #3b82f6;
   --accent: #2dd4bf;
+  --success: #2dd4bf;
   --danger: #fb7185;
   --warning: #fb923c;
   --shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
@@ -461,6 +463,39 @@ select:focus-visible {
   display: grid;
   gap: 0.1rem;
   min-width: 0;
+}
+
+.resource-status {
+  display: grid;
+  justify-items: end;
+  gap: 0.1rem;
+  min-width: 8rem;
+  max-width: min(42vw, 34rem);
+  color: var(--text);
+}
+
+.resource-status strong {
+  white-space: nowrap;
+}
+
+.resource-status small {
+  width: 100%;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resource-status.success strong {
+  color: var(--success);
+}
+
+.resource-status.warning strong {
+  color: var(--warning);
+}
+
+.resource-status.error strong {
+  color: var(--danger);
 }
 
 .resource-kind-list {
