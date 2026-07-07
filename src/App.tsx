@@ -45,6 +45,7 @@ import {
 } from "./builderPanels";
 import { emptyManifest } from "./templates";
 import { getInitialTheme, themeStorageKey, type Theme } from "./theme";
+import { validateManifest } from "./manifestValidation";
 
 type SessionStatus = {
   connected: boolean;
@@ -264,6 +265,13 @@ function accessControlConflictMessage(manifest: Record<string, unknown>) {
   return hasAllow && hasDeny
     ? "Access control policy has both allow and deny lists. NGINX Ingress Controller uses only the allow list; remove one list before applying."
     : null;
+}
+
+function manifestValidationMessage(manifest: Record<string, unknown>) {
+  const errors = [...validateManifest(manifest)];
+  const conflictMessage = accessControlConflictMessage(manifest);
+  if (conflictMessage) errors.unshift(conflictMessage);
+  return errors.length ? `Manifest validation failed:\n${errors.map((item) => `- ${item}`).join("\n")}` : "";
 }
 
 function App() {
@@ -617,9 +625,9 @@ function App() {
       setSaving(true);
       setError(null);
       const parsed = YAML.parse(manifestText) as Record<string, unknown>;
-      const conflictMessage = accessControlConflictMessage(parsed);
-      if (conflictMessage) {
-        setError(conflictMessage);
+      const validationMessage = manifestValidationMessage(parsed);
+      if (validationMessage) {
+        setError(validationMessage);
         return;
       }
       if (appMode === "generator") {
@@ -667,9 +675,9 @@ function App() {
     options?: { onCreated?: (value: string) => void },
   ) {
     const metadata = (manifest.metadata ?? {}) as Record<string, unknown>;
-    const conflictMessage = accessControlConflictMessage(manifest);
-    if (conflictMessage) {
-      throw new Error(conflictMessage);
+    const validationMessage = manifestValidationMessage(manifest);
+    if (validationMessage) {
+      throw new Error(validationMessage);
     }
 
     if (appMode === "generator") {

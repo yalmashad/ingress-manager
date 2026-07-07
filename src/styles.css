@@ -502,6 +502,7 @@ select:focus-visible {
   border-radius: 8px;
   margin-bottom: 1rem;
   border: 1px solid transparent;
+  white-space: pre-line;
 }
 
 .banner.error {

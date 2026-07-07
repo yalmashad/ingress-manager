@@ -1626,6 +1626,7 @@ export function buildVirtualServerManifest(form: VirtualServerForm) {
         })
         .filter(Boolean);
       if (builtSplits.length) {
+        delete built.action;
         built.splits = builtSplits;
       } else if (
         route.splitPrimaryPass.trim() &&

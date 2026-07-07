@@ -123,7 +123,6 @@ describe("policy manifest builder", () => {
       routes: [
         {
           path: "/routing",
-          action: { pass: "tea" },
           matches: [{ conditions: [{ variable: "$request_method", value: "POST" }], action: { pass: "coffee" } }],
           splits: [
             { weight: 90, action: { pass: "coffee" } },
@@ -132,6 +131,7 @@ describe("policy manifest builder", () => {
         },
       ],
     });
+    expect(((buildVirtualServerManifest(form).spec as Record<string, unknown>).routes as Array<Record<string, unknown>>)[0]).not.toHaveProperty("action");
   });
 
   it("parses typed secrets back into the secret form", () => {
