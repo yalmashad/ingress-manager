@@ -7,10 +7,12 @@ import {
   defaultRouteForm,
   defaultRouteMatchForm,
   defaultRouteSplitForm,
+  defaultUpstreamForm,
   defaultSecretForm,
   defaultVirtualServerForm,
   parsePolicyManifest,
   parseSecretManifest,
+  parseVirtualServerManifest,
   secretTypeOptions,
 } from "./resourceBuilders";
 
@@ -162,6 +164,34 @@ describe("policy manifest builder", () => {
     });
   });
 
+  it("preserves API key policies that accept both header and query keys", () => {
+    const parsed = parsePolicyManifest({
+      apiVersion: "k8s.nginx.org/v1",
+      kind: "Policy",
+      metadata: { name: "api-key-policy" },
+      spec: {
+        apiKey: {
+          clientSecret: "api-key-client-secret",
+          suppliedIn: {
+            header: ["X-header-name"],
+            query: ["queryName"],
+          },
+        },
+      },
+    });
+
+    expect(parsed.apiKeySuppliedIn).toBe("headerAndQuery");
+    expect(buildPolicyManifest(parsed).spec).toEqual({
+      apiKey: {
+        clientSecret: "api-key-client-secret",
+        suppliedIn: {
+          header: ["X-header-name"],
+          query: ["queryName"],
+        },
+      },
+    });
+  });
+
   it("builds JWT policies from either local secret or remote JWKS only", () => {
     const local = defaultPolicyForm("jwt");
     local.jwtMode = "localSecret";
@@ -282,5 +312,109 @@ describe("policy manifest builder", () => {
         ],
       },
     });
+  });
+
+  it("preserves WAF bundle sources from HTTPS bundle examples", () => {
+    const form = defaultPolicyForm("waf");
+    form.wafApBundleSourceYaml = "url: https://example.com/waf.tgz\nsecret: waf-bundle-secret\ntrustedCertSecret: waf-ca\nenablePolling: true\npollInterval: 5m";
+    form.wafSecurityLogEnable = true;
+    form.wafSecurityLogBundleSourceYaml = "url: https://example.com/log.tgz\nsecret: log-bundle-secret\ntrustedCertSecret: waf-ca";
+    form.wafSecurityLogDest = "stderr";
+
+    expect(buildPolicyManifest(form).spec).toMatchObject({
+      waf: {
+        enable: true,
+        apBundleSource: {
+          url: "https://example.com/waf.tgz",
+          secret: "waf-bundle-secret",
+          trustedCertSecret: "waf-ca",
+          enablePolling: true,
+          pollInterval: "5m",
+        },
+        securityLogs: [
+          {
+            enable: true,
+            apLogBundleSource: {
+              url: "https://example.com/log.tgz",
+              secret: "log-bundle-secret",
+              trustedCertSecret: "waf-ca",
+            },
+            logDest: "stderr",
+          },
+        ],
+      },
+    });
+  });
+
+  it("preserves cache manager settings and explicit useTempPath false", () => {
+    const parsed = parsePolicyManifest({
+      apiVersion: "k8s.nginx.org/v1",
+      kind: "Policy",
+      metadata: { name: "cache" },
+      spec: {
+        cache: {
+          cacheZoneName: "tea-coffee-cache",
+          cacheZoneSize: "10m",
+          useTempPath: false,
+          manager: {
+            files: 100,
+            sleep: "50ms",
+            threshold: "200ms",
+          },
+        },
+      },
+    });
+
+    expect(parsed.cacheUseTempPathMode).toBe("false");
+    expect(buildPolicyManifest(parsed).spec).toMatchObject({
+      cache: {
+        cacheZoneName: "tea-coffee-cache",
+        cacheZoneSize: "10m",
+        useTempPath: false,
+        manager: {
+          files: 100,
+          sleep: "50ms",
+          threshold: "200ms",
+        },
+      },
+    });
+  });
+});
+
+describe("VirtualServer manifest builder", () => {
+  it("preserves upstream backup services and delegated VirtualServerRoute routes", () => {
+    const form = defaultVirtualServerForm();
+    const upstream = defaultUpstreamForm();
+    upstream.name = "coffee";
+    upstream.service = "coffee-svc";
+    upstream.port = "80";
+    upstream.backup = "backup-svc";
+    upstream.backupPort = "8080";
+    const route = defaultRouteForm();
+    route.path = "/tea";
+    route.delegateRoute = "default/tea";
+    route.pass = "should-not-be-emitted";
+    form.upstreams = [upstream];
+    form.routes = [route];
+
+    expect(buildVirtualServerManifest(form).spec).toMatchObject({
+      upstreams: [{ name: "coffee", service: "coffee-svc", port: 80, backup: "backup-svc", backupPort: 8080 }],
+      routes: [{ path: "/tea", route: "default/tea" }],
+    });
+    expect(((buildVirtualServerManifest(form).spec as Record<string, unknown>).routes as Array<Record<string, unknown>>)[0]).not.toHaveProperty("action");
+  });
+
+  it("parses delegated VirtualServerRoute routes", () => {
+    const form = parseVirtualServerManifest({
+      apiVersion: "k8s.nginx.org/v1",
+      kind: "VirtualServer",
+      metadata: { name: "cafe" },
+      spec: {
+        host: "cafe.example.com",
+        routes: [{ path: "/tea", route: "default/tea" }],
+      },
+    });
+
+    expect(form.routes[0].delegateRoute).toBe("default/tea");
   });
 });

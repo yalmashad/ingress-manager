@@ -28,7 +28,7 @@ export type SecretType =
   | "nginx.org/ca"
   | "nginx.org/oidc"
   | "nginx.org/jwk";
-export type ApiKeySuppliedIn = "header" | "query";
+export type ApiKeySuppliedIn = "header" | "query" | "headerAndQuery";
 export type JwtMode = "localSecret" | "remoteJwks";
 export type RateLimitConditionType = "default" | "jwt" | "variable";
 
@@ -116,9 +116,11 @@ export type PolicyForm = {
   wafEnable: boolean;
   wafApPolicy: string;
   wafApBundle: string;
+  wafApBundleSourceYaml: string;
   wafSecurityLogEnable: boolean;
   wafSecurityLogConf: string;
   wafSecurityLogBundle: string;
+  wafSecurityLogBundleSourceYaml: string;
   wafSecurityLogDest: string;
   cacheZoneName: string;
   cacheZoneSize: string;
@@ -132,6 +134,8 @@ export type PolicyForm = {
   cacheMaxSize: string;
   cacheMinFree: string;
   cacheUseTempPath: boolean;
+  cacheUseTempPathMode: "" | "true" | "false";
+  cacheManagerYaml: string;
   cacheBackgroundUpdate: boolean;
   cacheRevalidate: boolean;
   cacheOverrideUpstreamCache: boolean;
@@ -154,6 +158,8 @@ export type UpstreamForm = {
   name: string;
   service: string;
   port: string;
+  backup: string;
+  backupPort: string;
   type: string;
   tlsEnable: boolean;
   useClusterIp: boolean;
@@ -197,6 +203,7 @@ export type RouteForm = {
   returnCode: string;
   returnType: string;
   returnBody: string;
+  delegateRoute: string;
   policyRefsText: string;
   locationSnippets: string;
   dos: string;
@@ -537,9 +544,11 @@ export function defaultPolicyForm(policyType: PolicyType = "rateLimit"): PolicyF
     wafEnable: true,
     wafApPolicy: "",
     wafApBundle: "",
+    wafApBundleSourceYaml: "",
     wafSecurityLogEnable: false,
     wafSecurityLogConf: "",
     wafSecurityLogBundle: "",
+    wafSecurityLogBundleSourceYaml: "",
     wafSecurityLogDest: "stderr",
     cacheZoneName: "maincache",
     cacheZoneSize: "10m",
@@ -553,6 +562,8 @@ export function defaultPolicyForm(policyType: PolicyType = "rateLimit"): PolicyF
     cacheMaxSize: "",
     cacheMinFree: "",
     cacheUseTempPath: false,
+    cacheUseTempPathMode: "",
+    cacheManagerYaml: "",
     cacheBackgroundUpdate: false,
     cacheRevalidate: false,
     cacheOverrideUpstreamCache: false,
@@ -627,8 +638,12 @@ export function buildPolicyManifest(form: PolicyForm) {
     spec.apiKey = {
       clientSecret: form.apiKeyClientSecret,
       suppliedIn: {
-        ...(form.apiKeySuppliedIn === "header" && form.apiKeySuppliedHeader.trim() ? { header: splitLines(form.apiKeySuppliedHeader) } : {}),
-        ...(form.apiKeySuppliedIn === "query" && form.apiKeySuppliedQuery.trim() ? { query: splitLines(form.apiKeySuppliedQuery) } : {}),
+        ...((form.apiKeySuppliedIn === "header" || form.apiKeySuppliedIn === "headerAndQuery") && form.apiKeySuppliedHeader.trim()
+          ? { header: splitLines(form.apiKeySuppliedHeader) }
+          : {}),
+        ...((form.apiKeySuppliedIn === "query" || form.apiKeySuppliedIn === "headerAndQuery") && form.apiKeySuppliedQuery.trim()
+          ? { query: splitLines(form.apiKeySuppliedQuery) }
+          : {}),
       },
     };
   }
@@ -724,13 +739,21 @@ export function buildPolicyManifest(form: PolicyForm) {
       enable: form.wafEnable,
       ...(form.wafApPolicy.trim() ? { apPolicy: form.wafApPolicy.trim() } : {}),
       ...(form.wafApBundle.trim() ? { apBundle: form.wafApBundle.trim() } : {}),
-      ...((form.wafSecurityLogEnable || form.wafSecurityLogConf.trim() || form.wafSecurityLogDest.trim() || form.wafSecurityLogBundle.trim())
+      ...(form.wafApBundleSourceYaml.trim() ? { apBundleSource: parseYamlBlock(form.wafApBundleSourceYaml) } : {}),
+      ...((form.wafSecurityLogEnable ||
+      form.wafSecurityLogConf.trim() ||
+      form.wafSecurityLogDest.trim() ||
+      form.wafSecurityLogBundle.trim() ||
+      form.wafSecurityLogBundleSourceYaml.trim())
         ? {
             securityLogs: [
               {
                 ...(form.wafSecurityLogEnable ? { enable: true } : {}),
                 ...(form.wafSecurityLogConf.trim() ? { apLogConf: form.wafSecurityLogConf.trim() } : {}),
                 ...(form.wafSecurityLogBundle.trim() ? { apLogBundle: form.wafSecurityLogBundle.trim() } : {}),
+                ...(form.wafSecurityLogBundleSourceYaml.trim()
+                  ? { apLogBundleSource: parseYamlBlock(form.wafSecurityLogBundleSourceYaml) }
+                  : {}),
                 ...(form.wafSecurityLogDest.trim() ? { logDest: form.wafSecurityLogDest.trim() } : {}),
               },
             ],
@@ -752,7 +775,8 @@ export function buildPolicyManifest(form: PolicyForm) {
       ...(form.cacheLevels.trim() ? { levels: form.cacheLevels.trim() } : {}),
       ...(form.cacheMaxSize.trim() ? { maxSize: form.cacheMaxSize.trim() } : {}),
       ...(form.cacheMinFree.trim() ? { minFree: form.cacheMinFree.trim() } : {}),
-      ...(form.cacheUseTempPath ? { useTempPath: true } : {}),
+      ...(form.cacheUseTempPathMode ? { useTempPath: form.cacheUseTempPathMode === "true" } : form.cacheUseTempPath ? { useTempPath: true } : {}),
+      ...(form.cacheManagerYaml.trim() ? { manager: parseYamlBlock(form.cacheManagerYaml) } : {}),
       ...(form.cacheBackgroundUpdate ? { cacheBackgroundUpdate: true } : {}),
       ...(form.cacheRevalidate ? { cacheRevalidate: true } : {}),
       ...(form.cacheOverrideUpstreamCache ? { overrideUpstreamCache: true } : {}),
@@ -846,7 +870,9 @@ export function parsePolicyManifest(manifest: Record<string, unknown>) {
   if (policyType === "apiKey") {
     form.apiKeyClientSecret = String(value.clientSecret ?? "");
     const suppliedIn = (value.suppliedIn ?? {}) as Record<string, unknown>;
-    form.apiKeySuppliedIn = Array.isArray(suppliedIn.query) && (suppliedIn.query as string[]).length ? "query" : "header";
+    const hasHeader = Array.isArray(suppliedIn.header) && (suppliedIn.header as string[]).length > 0;
+    const hasQuery = Array.isArray(suppliedIn.query) && (suppliedIn.query as string[]).length > 0;
+    form.apiKeySuppliedIn = hasHeader && hasQuery ? "headerAndQuery" : hasQuery ? "query" : "header";
     form.apiKeySuppliedHeader = Array.isArray(suppliedIn.header) ? (suppliedIn.header as string[]).join("\n") : "";
     form.apiKeySuppliedQuery = Array.isArray(suppliedIn.query) ? (suppliedIn.query as string[]).join("\n") : "";
   }
@@ -926,11 +952,13 @@ export function parsePolicyManifest(manifest: Record<string, unknown>) {
     form.wafEnable = Boolean(value.enable);
     form.wafApPolicy = String(value.apPolicy ?? "");
     form.wafApBundle = String(value.apBundle ?? "");
+    form.wafApBundleSourceYaml = stringifyYamlBlock(value.apBundleSource);
     const securityLogs = Array.isArray(value.securityLogs) ? value.securityLogs : [];
     const securityLog = ((securityLogs[0] as Record<string, unknown> | undefined) ?? value.securityLog ?? {}) as Record<string, unknown>;
     form.wafSecurityLogEnable = Boolean(securityLog.enable);
     form.wafSecurityLogConf = String(securityLog.apLogConf ?? "");
     form.wafSecurityLogBundle = String(securityLog.apLogBundle ?? "");
+    form.wafSecurityLogBundleSourceYaml = stringifyYamlBlock(securityLog.apLogBundleSource);
     form.wafSecurityLogDest = String(securityLog.logDest ?? "");
   }
 
@@ -947,6 +975,8 @@ export function parsePolicyManifest(manifest: Record<string, unknown>) {
     form.cacheMaxSize = String(value.maxSize ?? "");
     form.cacheMinFree = String(value.minFree ?? "");
     form.cacheUseTempPath = Boolean(value.useTempPath);
+    form.cacheUseTempPathMode = value.useTempPath === undefined ? "" : Boolean(value.useTempPath) ? "true" : "false";
+    form.cacheManagerYaml = stringifyYamlBlock(value.manager);
     form.cacheBackgroundUpdate = Boolean(value.cacheBackgroundUpdate);
     form.cacheRevalidate = Boolean(value.cacheRevalidate);
     form.cacheOverrideUpstreamCache = Boolean(value.overrideUpstreamCache);
@@ -978,6 +1008,8 @@ export function defaultUpstreamForm(): UpstreamForm {
     name: "app",
     service: "app-service",
     port: "80",
+    backup: "",
+    backupPort: "",
     type: "http",
     tlsEnable: false,
     useClusterIp: false,
@@ -1050,6 +1082,7 @@ export function defaultRouteForm(): RouteForm {
     returnCode: "200",
     returnType: "text/plain",
     returnBody: "",
+    delegateRoute: "",
     policyRefsText: "",
     locationSnippets: "",
     dos: "",
@@ -1510,6 +1543,8 @@ export function buildVirtualServerManifest(form: VirtualServerForm) {
         service: upstream.service,
         port: Number(upstream.port),
       };
+      if (upstream.backup.trim()) built.backup = upstream.backup.trim();
+      if (upstream.backupPort.trim()) built.backupPort = Number(upstream.backupPort);
       if (upstream.type.trim()) built.type = upstream.type;
       if (upstream.tlsEnable) built.tls = { enable: true };
       if (upstream.useClusterIp) built["use-cluster-ip"] = true;
@@ -1557,10 +1592,12 @@ export function buildVirtualServerManifest(form: VirtualServerForm) {
       const built: Record<string, unknown> = {
         path: route.path,
       };
-      if (route.actionType === "pass" && route.pass.trim()) {
+      const hasDelegatedRoute = Boolean(route.delegateRoute.trim());
+      if (hasDelegatedRoute) built.route = route.delegateRoute.trim();
+      if (!hasDelegatedRoute && route.actionType === "pass" && route.pass.trim()) {
         built.action = { pass: route.pass.trim() };
       }
-      if (route.actionType === "proxy" && route.proxyUpstream.trim()) {
+      if (!hasDelegatedRoute && route.actionType === "proxy" && route.proxyUpstream.trim()) {
         built.action = {
           proxy: {
             upstream: route.proxyUpstream.trim(),
@@ -1568,7 +1605,7 @@ export function buildVirtualServerManifest(form: VirtualServerForm) {
           },
         };
       }
-      if (route.actionType === "redirect" && route.redirectUrl.trim()) {
+      if (!hasDelegatedRoute && route.actionType === "redirect" && route.redirectUrl.trim()) {
         built.action = {
           redirect: {
             url: route.redirectUrl.trim(),
@@ -1576,7 +1613,7 @@ export function buildVirtualServerManifest(form: VirtualServerForm) {
           },
         };
       }
-      if (route.actionType === "return") {
+      if (!hasDelegatedRoute && route.actionType === "return") {
         built.action = {
           return: {
             ...(route.returnCode.trim() ? { code: Number(route.returnCode) } : {}),
@@ -1588,47 +1625,52 @@ export function buildVirtualServerManifest(form: VirtualServerForm) {
       if (route.policyRefsText.trim()) built.policies = parsePolicyRefs(route.policyRefsText);
       if (route.locationSnippets.trim()) built["location-snippets"] = route.locationSnippets;
       if (route.dos.trim()) built.dos = route.dos.trim();
-      if (route.routeSelectorText.trim()) built.routeSelector = parseYamlBlock(route.routeSelectorText);
-      const builtMatches = route.matches
-        .map((match) => {
-          const action = buildNestedAction(match.actionType, {
-            pass: match.pass,
-            proxyUpstream: match.proxyUpstream,
-            rewritePath: match.rewritePath,
-            redirectUrl: match.redirectUrl,
-            redirectCode: match.redirectCode,
-            returnCode: match.returnCode,
-            returnType: match.returnType,
-            returnBody: match.returnBody,
-          });
-          if (!match.conditionName.trim() || !match.conditionValue.trim() || !action) return undefined;
-          return {
-            conditions: [{ [match.conditionType]: match.conditionName.trim(), value: match.conditionValue.trim() }],
-            action,
-          };
-        })
-        .filter(Boolean);
+      if (!hasDelegatedRoute && route.routeSelectorText.trim()) built.routeSelector = parseYamlBlock(route.routeSelectorText);
+      const builtMatches = hasDelegatedRoute
+        ? []
+        : route.matches
+            .map((match) => {
+              const action = buildNestedAction(match.actionType, {
+                pass: match.pass,
+                proxyUpstream: match.proxyUpstream,
+                rewritePath: match.rewritePath,
+                redirectUrl: match.redirectUrl,
+                redirectCode: match.redirectCode,
+                returnCode: match.returnCode,
+                returnType: match.returnType,
+                returnBody: match.returnBody,
+              });
+              if (!match.conditionName.trim() || !match.conditionValue.trim() || !action) return undefined;
+              return {
+                conditions: [{ [match.conditionType]: match.conditionName.trim(), value: match.conditionValue.trim() }],
+                action,
+              };
+            })
+            .filter(Boolean);
       if (builtMatches.length) built.matches = builtMatches;
-      const builtSplits = route.splits
-        .map((split) => {
-          if (!split.weight.trim()) return undefined;
-          const action = buildNestedAction(split.actionType, {
-            pass: split.pass,
-            proxyUpstream: split.proxyUpstream,
-            rewritePath: split.rewritePath,
-            redirectUrl: "",
-            redirectCode: "",
-            returnCode: "",
-            returnType: "",
-            returnBody: "",
-          });
-          return action ? { weight: Number(split.weight), action } : undefined;
-        })
-        .filter(Boolean);
+      const builtSplits = hasDelegatedRoute
+        ? []
+        : route.splits
+            .map((split) => {
+              if (!split.weight.trim()) return undefined;
+              const action = buildNestedAction(split.actionType, {
+                pass: split.pass,
+                proxyUpstream: split.proxyUpstream,
+                rewritePath: split.rewritePath,
+                redirectUrl: "",
+                redirectCode: "",
+                returnCode: "",
+                returnType: "",
+                returnBody: "",
+              });
+              return action ? { weight: Number(split.weight), action } : undefined;
+            })
+            .filter(Boolean);
       if (builtSplits.length) {
         delete built.action;
         built.splits = builtSplits;
       } else if (
+        !hasDelegatedRoute &&
         route.splitPrimaryPass.trim() &&
         route.splitSecondaryPass.trim() &&
         route.splitPrimaryWeight.trim() &&
@@ -1639,7 +1681,7 @@ export function buildVirtualServerManifest(form: VirtualServerForm) {
           { weight: Number(route.splitSecondaryWeight), action: { pass: route.splitSecondaryPass.trim() } },
         ];
       }
-      if (route.errorCodes.trim()) {
+      if (!hasDelegatedRoute && route.errorCodes.trim()) {
         built.errorPages = [
           {
             codes: splitLines(route.errorCodes).map((item) => Number(item)),
@@ -1785,6 +1827,8 @@ export function parseVirtualServerManifest(manifest: Record<string, unknown>): V
         upstream.name = String(item.name ?? "");
         upstream.service = String(item.service ?? "");
         upstream.port = item.port !== undefined ? String(item.port) : "";
+        upstream.backup = String(item.backup ?? "");
+        upstream.backupPort = item.backupPort !== undefined ? String(item.backupPort) : "";
         upstream.type = String(item.type ?? "http");
         upstream.tlsEnable = Boolean((item.tls as Record<string, unknown> | undefined)?.enable);
         upstream.useClusterIp = Boolean(item["use-cluster-ip"]);
@@ -1823,6 +1867,7 @@ export function parseVirtualServerManifest(manifest: Record<string, unknown>): V
     ? (spec.routes as Array<Record<string, unknown>>).map((item) => {
         const route = defaultRouteForm();
         route.path = String(item.path ?? "/");
+        route.delegateRoute = String(item.route ?? "");
         const action = (item.action ?? {}) as Record<string, unknown>;
         if ((action.proxy as Record<string, unknown> | undefined)?.upstream) route.actionType = "proxy";
         else if ((action.redirect as Record<string, unknown> | undefined)?.url) route.actionType = "redirect";

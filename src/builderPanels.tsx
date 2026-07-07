@@ -1280,6 +1280,12 @@ function UpstreamEditor({
           <SettingsTextField label="Name" description="Unique upstream name referenced by route actions." value={upstream.name} onChange={(value) => onChange({ ...upstream, name: value })} placeholder="app" required />
           <SettingsTextField label="Service" description="Kubernetes Service that backs this upstream." value={upstream.service} onChange={(value) => onChange({ ...upstream, service: value })} placeholder="app-service" required />
           <SettingsTextField label="Port" description="Service port exposed by the upstream." value={upstream.port} onChange={(value) => onChange({ ...upstream, port: value })} placeholder="80" required />
+          {showAdvanced ? (
+            <>
+              <SettingsTextField label="Backup service" description="Optional backup Service used when primary endpoints are unavailable." value={upstream.backup} onChange={(value) => onChange({ ...upstream, backup: value })} placeholder="example: backup-service" />
+              <SettingsTextField label="Backup port" description="Service port for the backup Service." value={upstream.backupPort} onChange={(value) => onChange({ ...upstream, backupPort: value })} placeholder="example: 80" />
+            </>
+          ) : null}
           <SettingsSelectField label="Type" description="Protocol used between NGINX and the upstream service." value={upstream.type} onChange={(value) => onChange({ ...upstream, type: value })} options={["http", "grpc"]} />
           <SettingsBooleanField label="TLS to upstream" description="Send traffic to this upstream over TLS." value={upstream.tlsEnable} onChange={(value) => onChange({ ...upstream, tlsEnable: value })} />
           {showAdvanced ? <SettingsBooleanField label="Use cluster IP" description="Send traffic to the Service ClusterIP instead of individual pod endpoints." value={upstream.useClusterIp} onChange={(value) => onChange({ ...upstream, useClusterIp: value })} /> : null}
@@ -1509,19 +1515,22 @@ function RouteEditor({
       <Section title="Route" description="Path matching and the action applied to matching requests" defaultOpen>
         <div className="settings-table">
           <SettingsTextField label="Path" description="Route path, exact match, or regex pattern." value={route.path} onChange={(value) => onChange({ ...route, path: value })} placeholder="example: /tea or ~ ^/v[0-9]+/" required />
-          <RouteActionRows
-            actionType={route.actionType}
-            onActionTypeChange={(value) => onChange(resetRouteForAction(route, value))}
-            pass={route.pass}
-            proxyUpstream={route.proxyUpstream}
-            rewritePath={route.rewritePath}
-            redirectUrl={route.redirectUrl}
-            redirectCode={route.redirectCode}
-            returnCode={route.returnCode}
-            returnType={route.returnType}
-            returnBody={route.returnBody}
-            onChange={(next) => onChange({ ...route, ...next })}
-          />
+          <SettingsTextField label="VirtualServerRoute" description="Delegate this path to a VirtualServerRoute. Use name or namespace/name." value={route.delegateRoute} onChange={(value) => onChange({ ...route, delegateRoute: value })} placeholder="example: default/tea" />
+          {!route.delegateRoute.trim() ? (
+            <RouteActionRows
+              actionType={route.actionType}
+              onActionTypeChange={(value) => onChange(resetRouteForAction(route, value))}
+              pass={route.pass}
+              proxyUpstream={route.proxyUpstream}
+              rewritePath={route.rewritePath}
+              redirectUrl={route.redirectUrl}
+              redirectCode={route.redirectCode}
+              returnCode={route.returnCode}
+              returnType={route.returnType}
+              returnBody={route.returnBody}
+              onChange={(next) => onChange({ ...route, ...next })}
+            />
+          ) : null}
           <PolicyTransferField
             label="Policies"
             description="Attach one or more Policy resources to this route."
@@ -1529,107 +1538,111 @@ function RouteEditor({
             onChange={(value) => onChange({ ...route, policyRefsText: value })}
             clusterOptions={clusterOptions}
           />
-          {showAdvanced ? (
+          {showAdvanced && !route.delegateRoute.trim() ? (
             <SettingsTextAreaField label="Route selector" description="Advanced selector used when automatically including VirtualServerRoutes." value={route.routeSelectorText} onChange={(value) => onChange({ ...route, routeSelectorText: value })} placeholder={"example:\nmatchLabels:\n  app: cafe"} rows={5} />
           ) : null}
         </div>
       </Section>
 
-      <Section title="Matches" description="Optional condition rows evaluated before the default route action">
-        <div className="panel-heading compact">
-          <h4>Conditional matches</h4>
-          <button type="button" className="secondary" onClick={() => onChange({ ...route, matches: [...route.matches, defaultRouteMatchForm()] })}>
-            Add match
-          </button>
-        </div>
-        {route.matches.length ? null : <p className="empty-state">No conditional matches. Add a match to steer this same path by header, cookie, argument, or variable.</p>}
-        {route.matches.map((match, index) => (
-          <div className="nested-card" key={`match-${index}`}>
+      {!route.delegateRoute.trim() ? (
+        <>
+          <Section title="Matches" description="Optional condition rows evaluated before the default route action">
             <div className="panel-heading compact">
-              <h4>{`Match ${index + 1}`}</h4>
-              <button type="button" className="danger" onClick={() => onChange({ ...route, matches: route.matches.filter((_, itemIndex) => itemIndex !== index) })}>
-                Remove
+              <h4>Conditional matches</h4>
+              <button type="button" className="secondary" onClick={() => onChange({ ...route, matches: [...route.matches, defaultRouteMatchForm()] })}>
+                Add match
               </button>
             </div>
-            <div className="settings-table">
-              <SettingsSelectField label="Condition type" description="Condition source used by this match rule." value={match.conditionType} onChange={(value) => updateMatch(index, { ...match, conditionType: value as RouteMatchForm["conditionType"] })} options={["header", "cookie", "argument", "variable"]} required />
-              <SettingsTextField label="Condition name" description="Header, cookie, argument, or variable name." value={match.conditionName} onChange={(value) => updateMatch(index, { ...match, conditionName: value })} placeholder={match.conditionType === "variable" ? "example: $request_method" : "example: User-Agent"} required />
-              <SettingsTextField label="Condition value" description="Value to compare against, including exact or regex matches." value={match.conditionValue} onChange={(value) => updateMatch(index, { ...match, conditionValue: value })} placeholder="example: POST or ~^.*(Android|iPhone).*" required />
-              <RouteActionRows
-                prefix="Match"
-                actionType={match.actionType}
-                onActionTypeChange={(value) => updateMatch(index, { ...match, actionType: value })}
-                pass={match.pass}
-                proxyUpstream={match.proxyUpstream}
-                rewritePath={match.rewritePath}
-                redirectUrl={match.redirectUrl}
-                redirectCode={match.redirectCode}
-                returnCode={match.returnCode}
-                returnType={match.returnType}
-                returnBody={match.returnBody}
-                onChange={(next) => updateMatch(index, { ...match, ...next })}
-              />
-            </div>
-          </div>
-        ))}
-      </Section>
+            {route.matches.length ? null : <p className="empty-state">No conditional matches. Add a match to steer this same path by header, cookie, argument, or variable.</p>}
+            {route.matches.map((match, index) => (
+              <div className="nested-card" key={`match-${index}`}>
+                <div className="panel-heading compact">
+                  <h4>{`Match ${index + 1}`}</h4>
+                  <button type="button" className="danger" onClick={() => onChange({ ...route, matches: route.matches.filter((_, itemIndex) => itemIndex !== index) })}>
+                    Remove
+                  </button>
+                </div>
+                <div className="settings-table">
+                  <SettingsSelectField label="Condition type" description="Condition source used by this match rule." value={match.conditionType} onChange={(value) => updateMatch(index, { ...match, conditionType: value as RouteMatchForm["conditionType"] })} options={["header", "cookie", "argument", "variable"]} required />
+                  <SettingsTextField label="Condition name" description="Header, cookie, argument, or variable name." value={match.conditionName} onChange={(value) => updateMatch(index, { ...match, conditionName: value })} placeholder={match.conditionType === "variable" ? "example: $request_method" : "example: User-Agent"} required />
+                  <SettingsTextField label="Condition value" description="Value to compare against, including exact or regex matches." value={match.conditionValue} onChange={(value) => updateMatch(index, { ...match, conditionValue: value })} placeholder="example: POST or ~^.*(Android|iPhone).*" required />
+                  <RouteActionRows
+                    prefix="Match"
+                    actionType={match.actionType}
+                    onActionTypeChange={(value) => updateMatch(index, { ...match, actionType: value })}
+                    pass={match.pass}
+                    proxyUpstream={match.proxyUpstream}
+                    rewritePath={match.rewritePath}
+                    redirectUrl={match.redirectUrl}
+                    redirectCode={match.redirectCode}
+                    returnCode={match.returnCode}
+                    returnType={match.returnType}
+                    returnBody={match.returnBody}
+                    onChange={(next) => updateMatch(index, { ...match, ...next })}
+                  />
+                </div>
+              </div>
+            ))}
+          </Section>
 
-      <Section title="Splits" description="Optional weighted actions for canary or percentage routing">
-        <div className="panel-heading compact">
-          <h4>Weighted splits</h4>
-          <button type="button" className="secondary" onClick={() => onChange({ ...route, splits: [...route.splits, defaultRouteSplitForm()] })}>
-            Add split
-          </button>
-        </div>
-        {route.splits.length ? null : <p className="empty-state">No splits. Add two or more splits to distribute this path across upstreams.</p>}
-        {route.splits.map((split, index) => (
-          <div className="nested-card" key={`split-${index}`}>
+          <Section title="Splits" description="Optional weighted actions for canary or percentage routing">
             <div className="panel-heading compact">
-              <h4>{`Split ${index + 1}`}</h4>
-              <button type="button" className="danger" onClick={() => onChange({ ...route, splits: route.splits.filter((_, itemIndex) => itemIndex !== index) })}>
-                Remove
+              <h4>Weighted splits</h4>
+              <button type="button" className="secondary" onClick={() => onChange({ ...route, splits: [...route.splits, defaultRouteSplitForm()] })}>
+                Add split
               </button>
             </div>
-            <div className="settings-table">
-              <SettingsTextField label="Weight" description="Traffic weight for this split action." value={split.weight} onChange={(value) => updateSplit(index, { ...split, weight: value })} placeholder="example: 90" required />
-              <RouteActionRows
-                prefix="Split"
-                actionType={split.actionType}
-                actionOptions={["pass", "proxy"]}
-                onActionTypeChange={(value) => updateSplit(index, { ...split, actionType: value })}
-                pass={split.pass}
-                proxyUpstream={split.proxyUpstream}
-                rewritePath={split.rewritePath}
-                redirectUrl=""
-                redirectCode=""
-                returnCode=""
-                returnType=""
-                returnBody=""
-                onChange={(next) => updateSplit(index, { ...split, ...next })}
-              />
-            </div>
-          </div>
-        ))}
-      </Section>
+            {route.splits.length ? null : <p className="empty-state">No splits. Add two or more splits to distribute this path across upstreams.</p>}
+            {route.splits.map((split, index) => (
+              <div className="nested-card" key={`split-${index}`}>
+                <div className="panel-heading compact">
+                  <h4>{`Split ${index + 1}`}</h4>
+                  <button type="button" className="danger" onClick={() => onChange({ ...route, splits: route.splits.filter((_, itemIndex) => itemIndex !== index) })}>
+                    Remove
+                  </button>
+                </div>
+                <div className="settings-table">
+                  <SettingsTextField label="Weight" description="Traffic weight for this split action." value={split.weight} onChange={(value) => updateSplit(index, { ...split, weight: value })} placeholder="example: 90" required />
+                  <RouteActionRows
+                    prefix="Split"
+                    actionType={split.actionType}
+                    actionOptions={["pass", "proxy"]}
+                    onActionTypeChange={(value) => updateSplit(index, { ...split, actionType: value })}
+                    pass={split.pass}
+                    proxyUpstream={split.proxyUpstream}
+                    rewritePath={split.rewritePath}
+                    redirectUrl=""
+                    redirectCode=""
+                    returnCode=""
+                    returnType=""
+                    returnBody=""
+                    onChange={(next) => updateSplit(index, { ...split, ...next })}
+                  />
+                </div>
+              </div>
+            ))}
+          </Section>
 
-      <Section title="Error Pages" description="Custom redirect or response for selected error codes">
-        <div className="settings-table">
-          <SettingsTextAreaField label="Error codes" description="Status codes that should trigger this custom error handling." value={route.errorCodes} onChange={(value) => onChange({ ...route, errorCodes: value })} placeholder="example: 404&#10;500" />
-          <SettingsSelectField label="Error action type" description="Choose whether matching errors should redirect or return a custom response." value={route.errorActionType} onChange={(value) => onChange({ ...route, errorActionType: value as RouteForm["errorActionType"] })} options={errorActionOptions} />
-          {route.errorActionType === "redirect" ? (
-            <>
-              <SettingsSelectField label="Redirect code" description="HTTP redirect status code returned for matching errors." value={route.errorRedirectCode} onChange={(value) => onChange({ ...route, errorRedirectCode: value })} options={tlsRedirectCodeOptions} />
-              <SettingsTextField label="Redirect URL" description="URL returned when these errors occur." value={route.errorRedirectUrl} onChange={(value) => onChange({ ...route, errorRedirectUrl: value })} placeholder="example: /error.html" />
-            </>
-          ) : (
-            <>
-              <SettingsTextField label="Return code" description="Status code returned with the custom error body." value={route.errorReturnCode} onChange={(value) => onChange({ ...route, errorReturnCode: value })} placeholder="example: 200" />
-              <SettingsTextField label="Return type" description="MIME type of the custom error body." value={route.errorReturnType} onChange={(value) => onChange({ ...route, errorReturnType: value })} placeholder="example: application/json" />
-              <SettingsTextAreaField label="Return body" description="Literal body returned for the selected error codes." value={route.errorReturnBody} onChange={(value) => onChange({ ...route, errorReturnBody: value })} placeholder='example: {"message":"fallback"}' />
-            </>
-          )}
-        </div>
-      </Section>
+          <Section title="Error Pages" description="Custom redirect or response for selected error codes">
+            <div className="settings-table">
+              <SettingsTextAreaField label="Error codes" description="Status codes that should trigger this custom error handling." value={route.errorCodes} onChange={(value) => onChange({ ...route, errorCodes: value })} placeholder="example: 404&#10;500" />
+              <SettingsSelectField label="Error action type" description="Choose whether matching errors should redirect or return a custom response." value={route.errorActionType} onChange={(value) => onChange({ ...route, errorActionType: value as RouteForm["errorActionType"] })} options={errorActionOptions} />
+              {route.errorActionType === "redirect" ? (
+                <>
+                  <SettingsSelectField label="Redirect code" description="HTTP redirect status code returned for matching errors." value={route.errorRedirectCode} onChange={(value) => onChange({ ...route, errorRedirectCode: value })} options={tlsRedirectCodeOptions} />
+                  <SettingsTextField label="Redirect URL" description="URL returned when these errors occur." value={route.errorRedirectUrl} onChange={(value) => onChange({ ...route, errorRedirectUrl: value })} placeholder="example: /error.html" />
+                </>
+              ) : (
+                <>
+                  <SettingsTextField label="Return code" description="Status code returned with the custom error body." value={route.errorReturnCode} onChange={(value) => onChange({ ...route, errorReturnCode: value })} placeholder="example: 200" />
+                  <SettingsTextField label="Return type" description="MIME type of the custom error body." value={route.errorReturnType} onChange={(value) => onChange({ ...route, errorReturnType: value })} placeholder="example: application/json" />
+                  <SettingsTextAreaField label="Return body" description="Literal body returned for the selected error codes." value={route.errorReturnBody} onChange={(value) => onChange({ ...route, errorReturnBody: value })} placeholder='example: {"message":"fallback"}' />
+                </>
+              )}
+            </div>
+          </Section>
+        </>
+      ) : null}
 
       {showLocationSnippets ? (
         <Section title="Snippets" description="Location-level raw NGINX directives for this route">
@@ -1822,12 +1835,13 @@ function PolicySettings({
     return (
       <div className="settings-table">
         <SettingsSecretSelect label="Client secret" description="Secret of type nginx.org/apikey." value={form.apiKeyClientSecret} onChange={(value) => update("apiKeyClientSecret", value)} clusterOptions={clusterOptions} onCreateResource={onCreateResource} secretType="nginx.org/apikey" namespace={form.namespace} required />
-        <SettingsSelectField label="Supplied in" description="Where clients provide the API key." value={form.apiKeySuppliedIn} onChange={(value) => update("apiKeySuppliedIn", value as ApiKeySuppliedIn)} options={[{ value: "header", label: "Header" }, { value: "query", label: "Query parameter" }]} required />
-        {form.apiKeySuppliedIn === "header" ? (
+        <SettingsSelectField label="Supplied in" description="Where clients provide the API key." value={form.apiKeySuppliedIn} onChange={(value) => update("apiKeySuppliedIn", value as ApiKeySuppliedIn)} options={[{ value: "header", label: "Header" }, { value: "query", label: "Query parameter" }, { value: "headerAndQuery", label: "Header and query" }]} required />
+        {form.apiKeySuppliedIn !== "query" ? (
           <SettingsTextField label="Header" description="HTTP header name that carries the API key." value={form.apiKeySuppliedHeader} onChange={(value) => update("apiKeySuppliedHeader", value)} placeholder="example: x-api-key" required />
-        ) : (
+        ) : null}
+        {form.apiKeySuppliedIn !== "header" ? (
           <SettingsTextField label="Query" description="Query parameter name that carries the API key." value={form.apiKeySuppliedQuery} onChange={(value) => update("apiKeySuppliedQuery", value)} placeholder="example: apikey" required />
-        )}
+        ) : null}
       </div>
     );
   }
@@ -1942,9 +1956,11 @@ function PolicySettings({
         <SettingsBooleanField label="Enable WAF" description="Enable App Protect WAF enforcement." value={form.wafEnable} onChange={(value) => update("wafEnable", value)} />
         <SettingsTextField label="App Protect policy" description="App Protect WAF policy resource reference." value={form.wafApPolicy} onChange={(value) => update("wafApPolicy", value)} placeholder="example: default/webapp-ap-policy" required />
         <SettingsTextField label="App Protect bundle" description="App Protect WAF bundle reference." value={form.wafApBundle} onChange={(value) => update("wafApBundle", value)} placeholder="example: waf-bundle" />
+        <SettingsTextAreaField label="Bundle source" description="YAML for apBundleSource when loading WAF bundles from HTTPS or management plane." value={form.wafApBundleSourceYaml} onChange={(value) => update("wafApBundleSourceYaml", value)} placeholder={"example:\nurl: https://example.com/waf.tgz\nsecret: waf-bundle-secret\ntrustedCertSecret: waf-ca"} rows={5} />
         <SettingsBooleanField label="Enable security log" description="Enable App Protect WAF security logging." value={form.wafSecurityLogEnable} onChange={(value) => update("wafSecurityLogEnable", value)} />
         <SettingsTextField label="Security log conf" description="App Protect WAF log configuration reference used in securityLogs." value={form.wafSecurityLogConf} onChange={(value) => update("wafSecurityLogConf", value)} placeholder="example: default/waf-log-conf" />
         <SettingsTextField label="Security log bundle" description="App Protect WAF log bundle reference used in securityLogs." value={form.wafSecurityLogBundle} onChange={(value) => update("wafSecurityLogBundle", value)} placeholder="example: waf-log-bundle" />
+        <SettingsTextAreaField label="Security log bundle source" description="YAML for securityLogs.apLogBundleSource." value={form.wafSecurityLogBundleSourceYaml} onChange={(value) => update("wafSecurityLogBundleSourceYaml", value)} placeholder={"example:\nurl: https://example.com/log.tgz\nsecret: log-bundle-secret\ntrustedCertSecret: waf-ca"} rows={5} />
         <SettingsTextField label="Security log destination" description="Where WAF securityLogs should be written." value={form.wafSecurityLogDest} onChange={(value) => update("wafSecurityLogDest", value)} placeholder="example: stderr" />
       </div>
     );
@@ -1968,9 +1984,10 @@ function PolicySettings({
         <SettingsTextAreaField label="Bypass conditions" description="Expressions that bypass cache lookup." value={form.cacheBypass} onChange={(value) => update("cacheBypass", value)} placeholder="example: ${http_cache_bypass}" rows={2} />
         <SettingsTextAreaField label="No-cache conditions" description="Expressions that prevent cache save." value={form.cacheNoCache} onChange={(value) => update("cacheNoCache", value)} placeholder="example: ${cookie_nocache}" rows={2} />
         <SettingsTextAreaField label="Purge allow list" description="CIDRs allowed to purge cache entries." value={form.cachePurgeAllow} onChange={(value) => update("cachePurgeAllow", value)} placeholder="example: 10.0.0.0/8" rows={2} />
+        <SettingsTextAreaField label="Cache manager" description="YAML for manager.files, manager.sleep, and manager.threshold." value={form.cacheManagerYaml} onChange={(value) => update("cacheManagerYaml", value)} placeholder={"example:\nfiles: 100\nsleep: 50ms\nthreshold: 200ms"} rows={4} />
         <SettingsTextField label="Lock age" description="Maximum time a cache lock may be held." value={form.cacheLockAge} onChange={(value) => update("cacheLockAge", value)} placeholder="default: 5s" />
         <SettingsTextField label="Lock timeout" description="How long to wait on a cache lock before bypassing." value={form.cacheLockTimeout} onChange={(value) => update("cacheLockTimeout", value)} placeholder="default: 5s" />
-        <SettingsBooleanField label="Use temp path" description="Write temp files outside the cache path." value={form.cacheUseTempPath} onChange={(value) => update("cacheUseTempPath", value)} />
+        <SettingsSelectField label="Use temp path" description="Write temp files outside the cache path." value={form.cacheUseTempPathMode} onChange={(value) => update("cacheUseTempPathMode", value as "" | "true" | "false")} options={[{ value: "", label: "Controller default" }, { value: "true", label: "Enabled" }, { value: "false", label: "Disabled" }]} />
         <SettingsBooleanField label="Background update" description="Refresh expired cache entries in the background." value={form.cacheBackgroundUpdate} onChange={(value) => update("cacheBackgroundUpdate", value)} />
         <SettingsBooleanField label="Revalidate" description="Revalidate expired cache with conditional requests." value={form.cacheRevalidate} onChange={(value) => update("cacheRevalidate", value)} />
         <SettingsBooleanField label="Override upstream cache headers" description="Ignore upstream cache-control headers." value={form.cacheOverrideUpstreamCache} onChange={(value) => update("cacheOverrideUpstreamCache", value)} />
