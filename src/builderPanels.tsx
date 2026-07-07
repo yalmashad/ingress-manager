@@ -754,32 +754,6 @@ function PolicyTransferField({
     <SettingsRow label={label} description={description}>
       <div className="transfer-list">
         <div className="transfer-pane">
-          <span className="transfer-title">Selected</span>
-          <div className="transfer-box" role="listbox" aria-label={`${label} selected`}>
-            {selected.map((item) => (
-              <button
-                key={item}
-                type="button"
-                className={`transfer-option ${selectedChoice === item ? "active" : ""}`}
-                onClick={() => setSelectedChoice(item)}
-                onDoubleClick={() => removeChoice(item)}
-                aria-pressed={selectedChoice === item}
-                title={item}
-              >
-                {item}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="transfer-actions">
-          <button type="button" className="slim-button transfer-arrow" onClick={() => addChoice(availableChoice)} disabled={!availableChoice} aria-label="Move selected available policy to selected policies" title="Move to selected">
-            &lt;&lt;
-          </button>
-          <button type="button" className="slim-button transfer-arrow" onClick={() => removeChoice(selectedChoice)} disabled={!selectedChoice} aria-label="Move selected policy back to available policies" title="Move to available">
-            &gt;&gt;
-          </button>
-        </div>
-        <div className="transfer-pane">
           <span className="transfer-title">Available</span>
           <div className="transfer-box" role="listbox" aria-label={`${label} available`}>
             {available.map((item) => (
@@ -790,6 +764,32 @@ function PolicyTransferField({
                 onClick={() => setAvailableChoice(item)}
                 onDoubleClick={() => addChoice(item)}
                 aria-pressed={availableChoice === item}
+                title={item}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="transfer-actions">
+          <button type="button" className="slim-button transfer-arrow" onClick={() => addChoice(availableChoice)} disabled={!availableChoice} aria-label="Move selected available policy to selected policies" title="Move to selected">
+            Add
+          </button>
+          <button type="button" className="slim-button transfer-arrow" onClick={() => removeChoice(selectedChoice)} disabled={!selectedChoice} aria-label="Move selected policy back to available policies" title="Move to available">
+            Remove
+          </button>
+        </div>
+        <div className="transfer-pane">
+          <span className="transfer-title">Selected</span>
+          <div className="transfer-box" role="listbox" aria-label={`${label} selected`}>
+            {selected.map((item) => (
+              <button
+                key={item}
+                type="button"
+                className={`transfer-option ${selectedChoice === item ? "active" : ""}`}
+                onClick={() => setSelectedChoice(item)}
+                onDoubleClick={() => removeChoice(item)}
+                aria-pressed={selectedChoice === item}
                 title={item}
               >
                 {item}

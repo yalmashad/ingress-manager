@@ -674,9 +674,11 @@ select:focus-visible {
 
 .transfer-list {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  gap: 0.65rem;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.7rem;
   align-items: stretch;
+  width: 100%;
+  min-width: 0;
 }
 
 .transfer-pane {
@@ -689,12 +691,12 @@ select:focus-visible {
   font-size: 0.78rem;
   font-weight: 700;
   color: var(--muted);
-  text-align: center;
+  text-align: left;
 }
 
 .transfer-box {
   width: 100%;
-  min-height: 8.5rem;
+  min-height: 7rem;
   max-width: 100%;
   overflow: auto;
   border: 1px solid var(--border);
@@ -706,7 +708,7 @@ select:focus-visible {
   display: block;
   width: max-content;
   min-width: 100%;
-  padding: 0.42rem 0.55rem;
+  padding: 0.5rem 0.65rem;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -728,14 +730,14 @@ select:focus-visible {
 
 .transfer-actions {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: 0.45rem;
-  justify-content: center;
-  align-self: center;
+  justify-content: flex-start;
+  align-self: stretch;
 }
 
 .transfer-arrow {
-  min-width: 3rem;
+  min-width: 5.5rem;
   justify-content: center;
   font-weight: 800;
 }
@@ -983,15 +985,6 @@ select:focus-visible {
   .settings-row,
   .settings-table-row {
     grid-template-columns: 1fr;
-  }
-
-  .transfer-list {
-    grid-template-columns: 1fr;
-  }
-
-  .transfer-actions {
-    flex-direction: row;
-    flex-wrap: wrap;
   }
 
   .settings-table-label {
