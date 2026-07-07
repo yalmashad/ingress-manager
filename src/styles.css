@@ -698,6 +698,7 @@ select:focus-visible {
   font-size: 0.78rem;
   font-weight: 700;
   color: var(--muted);
+  text-align: center;
 }
 
 .transfer-pane select {
@@ -710,6 +711,13 @@ select:focus-visible {
   flex-direction: column;
   gap: 0.45rem;
   justify-content: center;
+  align-self: center;
+}
+
+.transfer-arrow {
+  min-width: 3rem;
+  justify-content: center;
+  font-weight: 800;
 }
 
 .inline-warning {

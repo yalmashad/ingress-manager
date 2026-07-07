@@ -702,14 +702,12 @@ function PolicyTransferField({
   value,
   onChange,
   clusterOptions,
-  onCreateResource,
 }: {
   label: string;
   description: string;
   value: string;
   onChange: (value: string) => void;
   clusterOptions: ClusterOptions;
-  onCreateResource: (kind: string, options?: { namespace?: string; onCreated?: (value: string) => void }) => void;
 }) {
   const selected = splitLines(value);
   const selectedSet = new Set(selected);
@@ -722,10 +720,12 @@ function PolicyTransferField({
     if (!choice) return;
     onChange(joinLines([...selected, choice]));
     setAvailableChoice("");
+    setSelectedChoice("");
   };
   const removeChoice = (choice: string) => {
     if (!choice) return;
     onChange(joinLines(selected.filter((item) => item !== choice)));
+    setAvailableChoice("");
     setSelectedChoice("");
   };
 
@@ -733,9 +733,9 @@ function PolicyTransferField({
     <SettingsRow label={label} description={description}>
       <div className="transfer-list">
         <div className="transfer-pane">
-          <span className="transfer-title">Available</span>
-          <select size={Math.max(4, Math.min(8, available.length || 4))} value={availableChoice} onChange={(event) => setAvailableChoice(event.target.value)}>
-            {available.map((item) => (
+          <span className="transfer-title">Selected</span>
+          <select size={Math.max(4, Math.min(8, selected.length || 4))} value={selectedChoice} onChange={(event) => setSelectedChoice(event.target.value)} onDoubleClick={() => removeChoice(selectedChoice)}>
+            {selected.map((item) => (
               <option key={item} value={item}>
                 {item}
               </option>
@@ -743,24 +743,17 @@ function PolicyTransferField({
           </select>
         </div>
         <div className="transfer-actions">
-          <button type="button" className="slim-button" onClick={() => addChoice(availableChoice)} disabled={!availableChoice}>
-            Add
+          <button type="button" className="slim-button transfer-arrow" onClick={() => addChoice(availableChoice)} disabled={!availableChoice} aria-label="Move selected available policy to selected policies" title="Move to selected">
+            &lt;&lt;
           </button>
-          <button type="button" className="slim-button" onClick={() => removeChoice(selectedChoice)} disabled={!selectedChoice}>
-            Remove
-          </button>
-          <button
-            type="button"
-            className="slim-button"
-            onClick={() => onCreateResource("Policy", { onCreated: (created) => onChange(joinLines([...selected, created])) })}
-          >
-            Create Policy
+          <button type="button" className="slim-button transfer-arrow" onClick={() => removeChoice(selectedChoice)} disabled={!selectedChoice} aria-label="Move selected policy back to available policies" title="Move to available">
+            &gt;&gt;
           </button>
         </div>
         <div className="transfer-pane">
-          <span className="transfer-title">Selected</span>
-          <select size={Math.max(4, Math.min(8, selected.length || 4))} value={selectedChoice} onChange={(event) => setSelectedChoice(event.target.value)}>
-            {selected.map((item) => (
+          <span className="transfer-title">Available</span>
+          <select size={Math.max(4, Math.min(8, available.length || 4))} value={availableChoice} onChange={(event) => setAvailableChoice(event.target.value)} onDoubleClick={() => addChoice(availableChoice)}>
+            {available.map((item) => (
               <option key={item} value={item}>
                 {item}
               </option>
@@ -1500,7 +1493,6 @@ function RouteEditor({
             value={route.policyRefsText}
             onChange={(value) => onChange({ ...route, policyRefsText: value })}
             clusterOptions={clusterOptions}
-            onCreateResource={onCreateResource}
           />
           {showAdvanced ? (
             <SettingsTextAreaField label="Route selector" description="Advanced selector used when automatically including VirtualServerRoutes." value={route.routeSelectorText} onChange={(value) => onChange({ ...route, routeSelectorText: value })} placeholder={"example:\nmatchLabels:\n  app: cafe"} rows={5} />
@@ -2095,7 +2087,6 @@ export function VirtualServerBuilderPanel({
             value={form.policyRefsText}
             onChange={(value) => update("policyRefsText", value)}
             clusterOptions={clusterOptions}
-            onCreateResource={onCreateResource}
           />
           {showAdvancedFields ? <SettingsBooleanField label="Internal route" description="Mark the VirtualServer as internal-only." value={form.internalRoute} onChange={(value) => update("internalRoute", value)} /> : null}
           <SettingsBooleanField label="Enable gunzip" description="Allow NGINX to decompress gzipped upstream responses." value={form.gunzip} onChange={(value) => update("gunzip", value)} />
