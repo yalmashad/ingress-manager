@@ -152,6 +152,20 @@ describe("policy manifest builder", () => {
     expect(form.caCrl).toBe("crl");
   });
 
+  it("parses API key secrets stored in Kubernetes data", () => {
+    const form = parseSecretManifest({
+      apiVersion: "v1",
+      kind: "Secret",
+      metadata: { name: "apikey-secret", namespace: "default" },
+      type: "nginx.org/apikey",
+      data: { client1: "cGFzc3dvcmQ=" },
+    });
+
+    expect(form.secretType).toBe("nginx.org/apikey");
+    expect(form.apiKeyName).toBe("client1");
+    expect(form.apiKeyValue).toBe("password");
+  });
+
   it("builds API key policies with a selected secret and single supplied location", () => {
     const form = defaultPolicyForm("apiKey");
     form.apiKeyClientSecret = "api-key-secret";

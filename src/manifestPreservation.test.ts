@@ -103,4 +103,24 @@ describe("manifest preservation", () => {
       spec: { host: "app.example.com" },
     });
   });
+
+  it("does not warn or preserve Secret data entries represented by generated stringData", () => {
+    const original = {
+      apiVersion: "v1",
+      kind: "Secret",
+      metadata: { name: "apikey-secret" },
+      type: "nginx.org/apikey",
+      data: { client1: "cGFzc3dvcmQ=" },
+    };
+    const generated = {
+      apiVersion: "v1",
+      kind: "Secret",
+      metadata: { name: "apikey-secret", namespace: "default" },
+      type: "nginx.org/apikey",
+      stringData: { client1: "password" },
+    };
+
+    expect(findUnknownManifestPaths(original, generated)).toEqual([]);
+    expect(preserveUnknownManifestFields(original, generated)).toEqual(generated);
+  });
 });

@@ -1476,7 +1476,13 @@ export function parseSecretManifest(manifest: Record<string, unknown>): SecretFo
   const data = (manifest.data ?? {}) as Record<string, unknown>;
   form.certificate = String(stringData["tls.crt"] ?? (typeof data["tls.crt"] === "string" ? decodeBase64(data["tls.crt"]) : form.certificate));
   form.privateKey = String(stringData["tls.key"] ?? (typeof data["tls.key"] === "string" ? decodeBase64(data["tls.key"]) : form.privateKey));
-  const apiKeyEntry = Object.entries(stringData).find(([key]) => key !== "tls.crt" && key !== "tls.key");
+  const apiKeyEntries = [
+    ...Object.entries(stringData).filter(([key]) => key !== "tls.crt" && key !== "tls.key"),
+    ...Object.entries(data)
+      .filter(([key]) => key !== "tls.crt" && key !== "tls.key")
+      .map(([key, value]) => [key, typeof value === "string" ? decodeBase64(value) : value] as [string, unknown]),
+  ];
+  const apiKeyEntry = apiKeyEntries.find(([, value]) => String(value ?? "").trim()) ?? apiKeyEntries[0];
   if (form.secretType === "nginx.org/apikey" && apiKeyEntry) {
     form.apiKeyName = apiKeyEntry[0];
     form.apiKeyValue = String(apiKeyEntry[1] ?? "");
