@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findUnknownManifestPaths, preserveUnknownManifestFields } from "./manifestPreservation";
+import { findUnknownManifestPaths, preserveUnknownManifestFields, stripRuntimeManifestFields } from "./manifestPreservation";
 
 describe("manifest preservation", () => {
   it("preserves unsupported top-level spec fields while keeping generated GUI values authoritative", () => {
@@ -72,5 +72,35 @@ describe("manifest preservation", () => {
         { spec: { routes: [{ path: "/" }] } },
       ),
     ).toEqual(["spec.routes[0].futureRouteSetting", "spec.futureSpecSetting"]);
+  });
+
+  it("removes Kubernetes runtime fields before showing or applying a manifest", () => {
+    expect(
+      stripRuntimeManifestFields({
+        apiVersion: "k8s.nginx.org/v1",
+        kind: "VirtualServer",
+        metadata: {
+          name: "my-vs",
+          namespace: "default",
+          creationTimestamp: "2026-07-07T15:25:29.000Z",
+          generation: 1,
+          managedFields: [{ manager: "nginx-ingress" }],
+          resourceVersion: "645222",
+          uid: "a9b513b3",
+          labels: { app: "demo" },
+        },
+        spec: { host: "app.example.com" },
+        status: { state: "Invalid" },
+      }),
+    ).toEqual({
+      apiVersion: "k8s.nginx.org/v1",
+      kind: "VirtualServer",
+      metadata: {
+        name: "my-vs",
+        namespace: "default",
+        labels: { app: "demo" },
+      },
+      spec: { host: "app.example.com" },
+    });
   });
 });

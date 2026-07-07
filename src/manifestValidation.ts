@@ -16,6 +16,10 @@ function actionKey(action: Obj) {
   return ["pass", "proxy", "redirect", "return"].filter((key) => action[key] !== undefined);
 }
 
+function isRfc1123Subdomain(value: string) {
+  return /^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$/.test(value);
+}
+
 function validateAction(action: unknown, upstreams: Set<string>, path: string, errors: string[]) {
   if (!isObj(action)) {
     errors.push(`${path} must be an object.`);
@@ -97,6 +101,12 @@ function validateRoute(route: Obj, index: number, routePath: string, upstreams: 
 function validateVirtualServer(manifest: Obj) {
   const errors: string[] = [];
   const spec = isObj(manifest.spec) ? manifest.spec : {};
+  const tls = isObj(spec.tls) ? spec.tls : {};
+  if (typeof tls.secret === "string" && tls.secret.trim()) {
+    if (tls.secret.includes("/") || !isRfc1123Subdomain(tls.secret)) {
+      errors.push("spec.tls.secret must be a same-namespace TLS secret name, not namespace/name.");
+    }
+  }
   const upstreams = new Set(
     asArray(spec.upstreams)
       .map((upstream) => upstream.name)

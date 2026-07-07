@@ -27,6 +27,28 @@ declare module "express-session" {
 
 type AnyRecord = Record<string, any>;
 
+const runtimeMetadataFields = new Set([
+  "creationTimestamp",
+  "deletionGracePeriodSeconds",
+  "deletionTimestamp",
+  "finalizers",
+  "generation",
+  "managedFields",
+  "ownerReferences",
+  "resourceVersion",
+  "selfLink",
+  "uid",
+]);
+
+function sanitizeApplyManifest(manifest: KubernetesObject) {
+  const { status: _status, ...desired } = manifest as KubernetesObject & { status?: unknown };
+  const metadata = (manifest.metadata ?? {}) as AnyRecord;
+  return {
+    ...desired,
+    metadata: Object.fromEntries(Object.entries(metadata).filter(([key]) => !runtimeMetadataFields.has(key))),
+  } as KubernetesObject;
+}
+
 function kubeconfigStatus(kc: KubeConfig, connected: boolean, requiresContextSelection = false) {
   return {
     connected,
@@ -524,7 +546,7 @@ app.get("/api/resource", async (req, res) => {
 
 app.post("/api/resource", async (req, res) => {
   try {
-    const manifest = req.body as KubernetesObject;
+    const manifest = sanitizeApplyManifest(req.body as KubernetesObject);
     if (!manifest?.apiVersion || !manifest?.kind || !manifest?.metadata?.name) {
       res.status(400).json({ message: "Manifest requires apiVersion, kind, and metadata.name." });
       return;

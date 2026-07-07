@@ -411,6 +411,8 @@ const splitLines = (value: string) =>
     .map((item) => item.trim())
     .filter(Boolean);
 
+const localObjectName = (value: string) => value.trim().split("/").filter(Boolean).pop() ?? "";
+
 const toNumber = (value: string) => {
   const trimmed = value.trim();
   return trimmed ? Number(trimmed) : undefined;
@@ -1228,7 +1230,7 @@ export function buildTransportServerManifest(form: TransportServerForm) {
         protocol: form.listenerProtocol,
       },
       ...(form.actionPass.trim() ? { action: { pass: form.actionPass.trim() } } : {}),
-      ...(form.tlsSecret.trim() ? { tls: { secret: form.tlsSecret.trim() } } : {}),
+      ...(form.tlsSecret.trim() ? { tls: { secret: localObjectName(form.tlsSecret) } } : {}),
       ...(form.sessionTimeout.trim() ? { sessionParameters: { timeout: form.sessionTimeout.trim() } } : {}),
       ...(form.serverSnippets.trim() ? { serverSnippets: form.serverSnippets } : {}),
       ...(form.streamSnippets.trim() ? { streamSnippets: form.streamSnippets } : {}),
@@ -1716,7 +1718,8 @@ export function buildVirtualServerManifest(form: VirtualServerForm) {
       ...(form.listenerHttps.trim() ? { https: form.listenerHttps.trim() } : {}),
     };
   }
-  const hasTlsSecret = Boolean(form.tlsSecret.trim());
+  const tlsSecretName = localObjectName(form.tlsSecret);
+  const hasTlsSecret = Boolean(tlsSecretName);
   const hasTlsRedirect = form.tlsRedirectEnable;
   const hasCertManager = Boolean(
     form.certIssuer.trim() || form.certClusterIssuer.trim() || form.certIssuerKind.trim() || form.certIssuerGroup.trim(),
@@ -1724,7 +1727,7 @@ export function buildVirtualServerManifest(form: VirtualServerForm) {
 
   if (hasTlsSecret || hasTlsRedirect || hasCertManager) {
     spec.tls = {
-      ...(hasTlsSecret ? { secret: form.tlsSecret.trim() } : {}),
+      ...(hasTlsSecret ? { secret: tlsSecretName } : {}),
       ...(hasTlsRedirect
         ? {
             redirect: {

@@ -1,5 +1,18 @@
 type Obj = Record<string, unknown>;
 
+const runtimeMetadataFields = new Set([
+  "creationTimestamp",
+  "deletionGracePeriodSeconds",
+  "deletionTimestamp",
+  "finalizers",
+  "generation",
+  "managedFields",
+  "ownerReferences",
+  "resourceVersion",
+  "selfLink",
+  "uid",
+]);
+
 function isObj(value: unknown): value is Obj {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -51,4 +64,19 @@ export function findUnknownManifestPaths(original: unknown, generated: unknown, 
     const path = basePath ? `${basePath}.${key}` : key;
     return key in generated ? findUnknownManifestPaths(value, generated[key], path) : [path];
   });
+}
+
+export function stripRuntimeManifestFields(manifest: unknown): unknown {
+  if (!isObj(manifest)) return manifest;
+
+  const cleaned: Obj = {};
+  for (const [key, value] of Object.entries(manifest)) {
+    if (key === "status") continue;
+    if (key === "metadata" && isObj(value)) {
+      cleaned.metadata = Object.fromEntries(Object.entries(value).filter(([metadataKey]) => !runtimeMetadataFields.has(metadataKey)));
+      continue;
+    }
+    cleaned[key] = value;
+  }
+  return cleaned;
 }

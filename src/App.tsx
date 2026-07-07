@@ -45,7 +45,7 @@ import {
 import { emptyManifest } from "./templates";
 import { getInitialTheme, themeStorageKey, type Theme } from "./theme";
 import { validateManifest } from "./manifestValidation";
-import { findUnknownManifestPaths, preserveUnknownManifestFields } from "./manifestPreservation";
+import { findUnknownManifestPaths, preserveUnknownManifestFields, stripRuntimeManifestFields } from "./manifestPreservation";
 
 type SessionStatus = {
   connected: boolean;
@@ -471,7 +471,7 @@ function App() {
     }
 
     try {
-      const parsed = YAML.parse(manifestText) as Record<string, unknown> | null;
+      const parsed = stripRuntimeManifestFields(YAML.parse(manifestText)) as Record<string, unknown> | null;
       if (!parsed || typeof parsed !== "object") return;
       const supportedManifest = buildSupportedManifestFromRaw(parsed);
       rawManifestRef.current = supportedManifest ? parsed : null;
@@ -566,7 +566,7 @@ function App() {
       if (nextSelected.namespace) params.set("namespace", nextSelected.namespace);
       const resource = await fetchJson<Record<string, unknown>>(`/api/resource?${params.toString()}`);
       skipManifestParseRef.current = false;
-      setManifestText(YAML.stringify(resource));
+      setManifestText(YAML.stringify(stripRuntimeManifestFields(resource)));
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -709,14 +709,14 @@ function App() {
     try {
       setSaving(true);
       setError(null);
-      const parsed = YAML.parse(manifestText) as Record<string, unknown>;
+      const parsed = stripRuntimeManifestFields(YAML.parse(manifestText)) as Record<string, unknown>;
       const validationMessage = manifestValidationMessage(parsed);
       if (validationMessage) {
         setError(validationMessage);
         return;
       }
       if (appMode === "generator") {
-        await copyYaml([manifestText]);
+        await copyYaml([YAML.stringify(parsed)]);
         return;
       }
       await submitResourceManifest(parsed, {

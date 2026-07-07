@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   buildPolicyManifest,
   buildSecretManifest,
+  buildTransportServerManifest,
   buildVirtualServerManifest,
+  defaultTransportServerForm,
   defaultPolicyForm,
   defaultRouteForm,
   defaultRouteMatchForm,
@@ -416,5 +418,25 @@ describe("VirtualServer manifest builder", () => {
     });
 
     expect(form.routes[0].delegateRoute).toBe("default/tea");
+  });
+
+  it("emits only the local secret name for VirtualServer TLS", () => {
+    const form = defaultVirtualServerForm();
+    form.tlsSecret = "default/example-tls-secret";
+
+    expect(buildVirtualServerManifest(form).spec).toMatchObject({
+      tls: { secret: "example-tls-secret" },
+    });
+  });
+});
+
+describe("TransportServer manifest builder", () => {
+  it("emits only the local secret name for TransportServer TLS", () => {
+    const form = defaultTransportServerForm();
+    form.tlsSecret = "default/tcp-tls-secret";
+
+    expect(buildTransportServerManifest(form).spec).toMatchObject({
+      tls: { secret: "tcp-tls-secret" },
+    });
   });
 });

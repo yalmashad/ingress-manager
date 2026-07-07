@@ -68,4 +68,20 @@ describe("manifest validation", () => {
       }),
     ).toEqual([]);
   });
+
+  it("rejects namespace-qualified VirtualServer TLS secret references", () => {
+    expect(
+      validateManifest({
+        apiVersion: "k8s.nginx.org/v1",
+        kind: "VirtualServer",
+        metadata: { name: "my-vs", namespace: "default" },
+        spec: {
+          host: "app.example.com",
+          tls: { secret: "default/example-tls-secret" },
+          upstreams: [{ name: "app", service: "nginx-service", port: 80 }],
+          routes: [{ path: "/", action: { pass: "app" } }],
+        },
+      }),
+    ).toContain("spec.tls.secret must be a same-namespace TLS secret name, not namespace/name.");
+  });
 });

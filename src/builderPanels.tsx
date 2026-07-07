@@ -140,6 +140,17 @@ function resourceOptions(items: Array<{ name: string; namespace?: string }>, cre
   return [{ value: "", label: "None" }, ...built, { value: createValue, label: createLabel }];
 }
 
+function sameNamespaceSecretOptions(
+  items: Array<{ name: string; namespace?: string }>,
+  namespace: string | undefined,
+  createValue: string,
+  createLabel: string,
+): Array<{ value: string; label: string }> {
+  const filtered = namespace ? items.filter((item) => !item.namespace || item.namespace === namespace) : items;
+  const built = filtered.map((item) => ({ value: item.name, label: item.namespace ? `${item.name} (${item.namespace})` : item.name }));
+  return [{ value: "", label: "None" }, ...built, { value: createValue, label: createLabel }];
+}
+
 function secretTypeLabel(secretType: SecretType) {
   if (!secretType) return "Select secret type";
   if (secretType === "kubernetes.io/tls") return "TLS secret";
@@ -673,7 +684,7 @@ function SettingsSecretSelect({
   namespace?: string;
   required?: boolean;
 }) {
-  const options = resourceOptions(typedSecretItems(clusterOptions, secretType), createTypedSecretValue, "Create Secret");
+  const options = sameNamespaceSecretOptions(typedSecretItems(clusterOptions, secretType), namespace, createTypedSecretValue, "Create Secret");
   return (
     <SettingsSelectField
       label={label}
@@ -2509,7 +2520,7 @@ export function TransportServerBuilderPanel({
               }
               update("tlsSecret", value);
             }}
-            options={resourceOptions(clusterOptions.tlsSecrets, createTlsSecretValue, "Create Secret")}
+            options={sameNamespaceSecretOptions(clusterOptions.tlsSecrets, form.namespace, createTlsSecretValue, "Create Secret")}
           />
           <SettingsTextField label="Session timeout" description="Idle timeout between client and upstream packets." value={form.sessionTimeout} onChange={(value) => update("sessionTimeout", value)} placeholder="default: 10m" />
         </div>
