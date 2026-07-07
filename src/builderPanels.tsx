@@ -2264,7 +2264,7 @@ export function VirtualServerBuilderPanel({
         </div>
         {form.upstreams.map((upstream, index) => (
           <UpstreamEditor
-            key={`${upstream.name}-${index}`}
+            key={`upstream-${index}`}
             upstream={upstream}
             onChange={(next) => update("upstreams", updateAtIndex(form.upstreams, index, next))}
             onRemove={() => update("upstreams", form.upstreams.filter((_, itemIndex) => itemIndex !== index))}
@@ -2282,7 +2282,7 @@ export function VirtualServerBuilderPanel({
         </div>
         {form.routes.map((route, index) => (
           <RouteEditor
-            key={`${route.path || "route"}-${index}`}
+            key={`route-${index}`}
             route={route}
             title={route.path || `Route ${index + 1}`}
             onChange={(next) => update("routes", updateAtIndex(form.routes, index, next))}
@@ -2389,7 +2389,7 @@ export function GlobalConfigurationBuilderPanel({
         </div>
         {form.listeners.map((listener, index) => (
           <ListenerEditor
-            key={`${listener.name}-${index}`}
+            key={`listener-${index}`}
             listener={listener}
             index={index}
             total={form.listeners.length}
@@ -2518,7 +2518,7 @@ export function TransportServerBuilderPanel({
         </div>
         {form.upstreams.map((upstream, index) => (
           <TransportUpstreamEditor
-            key={`${upstream.name}-${index}`}
+            key={`transport-upstream-${index}`}
             upstream={upstream}
             onChange={(next) => update("upstreams", updateAtIndex(form.upstreams, index, next))}
             onRemove={form.upstreams.length > 1 ? () => update("upstreams", form.upstreams.filter((_, itemIndex) => itemIndex !== index)) : undefined}
@@ -2577,7 +2577,7 @@ export function VirtualServerRouteBuilderPanel({
         </div>
         {form.upstreams.map((upstream, index) => (
           <UpstreamEditor
-            key={`${upstream.name}-${index}`}
+            key={`route-upstream-${index}`}
             upstream={upstream}
             onChange={(next) => update("upstreams", updateAtIndex(form.upstreams, index, next))}
             onRemove={form.upstreams.length > 1 ? () => update("upstreams", form.upstreams.filter((_, itemIndex) => itemIndex !== index)) : undefined}
@@ -2594,7 +2594,7 @@ export function VirtualServerRouteBuilderPanel({
         </div>
         {form.subroutes.map((route, index) => (
           <RouteEditor
-            key={`${route.path || "subroute"}-${index}`}
+            key={`subroute-${index}`}
             route={route}
             title={route.path || `Subroute ${index + 1}`}
             onChange={(next) => update("subroutes", updateAtIndex(form.subroutes, index, next))}

@@ -109,27 +109,12 @@ select:focus-visible {
   line-height: 1.05;
 }
 
-.lede,
 .muted,
 .resource-row small,
 .group-title small,
 .meta-block span,
 .section-card summary small {
   color: var(--muted);
-}
-
-.lede {
-  margin: 0;
-  line-height: 1.55;
-}
-
-.eyebrow {
-  margin: 0;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 0.74rem;
-  font-weight: 800;
-  color: var(--brand);
 }
 
 .theme-toggle {
@@ -374,21 +359,11 @@ select:focus-visible {
   transform: translateY(-1px);
 }
 
-.pill,
 .chip,
 .status-dot {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-}
-
-.pill {
-  padding: 0.28rem 0.65rem;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  color: var(--accent);
-  font-size: 0.82rem;
-  font-weight: 700;
 }
 
 .status-dot {

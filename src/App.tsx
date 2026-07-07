@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import YAML from "yaml";
 import { fetchJson, selectKubeconfigContext, uploadKubeconfig } from "./api";
 import {
-  appModeLabels,
   builderResourceKinds,
   combineYamlDocuments,
   getManifestActionLabel,
@@ -861,13 +860,7 @@ function App() {
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">
-          <p className="eyebrow">{appMode ? appModeLabels[appMode] : "Ingress workspace"}</p>
           <h1>NGINX Plus Ingress Manager</h1>
-          <p className="lede">
-            {appMode === "generator"
-              ? "Config-Generator mode"
-              : "Inspect the controller, import kubeconfig, review live NGINX resources, and apply safe edits back to your remote clusters."}
-          </p>
           <div className="theme-toggle" role="group" aria-label="Theme">
             {(["light", "dark"] as const).map((option) => (
               <button
@@ -887,7 +880,6 @@ function App() {
           <section className="panel">
             <div className="panel-heading">
               <h2>Mode</h2>
-              <span className="pill">{appModeLabels[appMode]}</span>
             </div>
             <div className="mode-switcher" role="group" aria-label="Application mode">
               <button
@@ -957,7 +949,6 @@ function App() {
           <section className="panel scroller">
             <div className="panel-heading">
               <h2>Resources</h2>
-              <span className="pill">{sidebarResourceKinds.length} kinds</span>
             </div>
             <div className="resource-kind-list">
               {sidebarResourceKinds.map((kind) => {
