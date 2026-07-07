@@ -716,6 +716,16 @@ function PolicyTransferField({
     .filter((item) => !selectedSet.has(item));
   const [availableChoice, setAvailableChoice] = useState("");
   const [selectedChoice, setSelectedChoice] = useState("");
+  useEffect(() => {
+    if (!available.includes(availableChoice)) {
+      setAvailableChoice(available[0] ?? "");
+    }
+  }, [available, availableChoice]);
+  useEffect(() => {
+    if (!selected.includes(selectedChoice)) {
+      setSelectedChoice(selected[0] ?? "");
+    }
+  }, [selected, selectedChoice]);
   const addChoice = (choice: string) => {
     if (!choice) return;
     onChange(joinLines([...selected, choice]));
@@ -734,13 +744,21 @@ function PolicyTransferField({
       <div className="transfer-list">
         <div className="transfer-pane">
           <span className="transfer-title">Selected</span>
-          <select size={Math.max(4, Math.min(8, selected.length || 4))} value={selectedChoice} onChange={(event) => setSelectedChoice(event.target.value)} onDoubleClick={() => removeChoice(selectedChoice)}>
+          <div className="transfer-box" role="listbox" aria-label={`${label} selected`}>
             {selected.map((item) => (
-              <option key={item} value={item}>
+              <button
+                key={item}
+                type="button"
+                className={`transfer-option ${selectedChoice === item ? "active" : ""}`}
+                onClick={() => setSelectedChoice(item)}
+                onDoubleClick={() => removeChoice(item)}
+                aria-pressed={selectedChoice === item}
+                title={item}
+              >
                 {item}
-              </option>
+              </button>
             ))}
-          </select>
+          </div>
         </div>
         <div className="transfer-actions">
           <button type="button" className="slim-button transfer-arrow" onClick={() => addChoice(availableChoice)} disabled={!availableChoice} aria-label="Move selected available policy to selected policies" title="Move to selected">
@@ -752,13 +770,21 @@ function PolicyTransferField({
         </div>
         <div className="transfer-pane">
           <span className="transfer-title">Available</span>
-          <select size={Math.max(4, Math.min(8, available.length || 4))} value={availableChoice} onChange={(event) => setAvailableChoice(event.target.value)} onDoubleClick={() => addChoice(availableChoice)}>
+          <div className="transfer-box" role="listbox" aria-label={`${label} available`}>
             {available.map((item) => (
-              <option key={item} value={item}>
+              <button
+                key={item}
+                type="button"
+                className={`transfer-option ${availableChoice === item ? "active" : ""}`}
+                onClick={() => setAvailableChoice(item)}
+                onDoubleClick={() => addChoice(item)}
+                aria-pressed={availableChoice === item}
+                title={item}
+              >
                 {item}
-              </option>
+              </button>
             ))}
-          </select>
+          </div>
         </div>
       </div>
     </SettingsRow>
@@ -1399,7 +1425,10 @@ function UpstreamEditor({
       <Section title="Session Persistence" description="Session persistence and endpoint selection">
         <div className="settings-table">
           <InlineSettingRow label="Sticky session cookie" description="Enable sticky sessions using an NGINX-generated cookie." required>
-            <input type="checkbox" checked={upstream.sessionCookieEnable} onChange={(event) => onChange({ ...upstream, sessionCookieEnable: event.target.checked })} />
+            <label className="checkbox settings-checkbox">
+              <input type="checkbox" checked={upstream.sessionCookieEnable} onChange={(event) => onChange({ ...upstream, sessionCookieEnable: event.target.checked })} />
+              <span>Enabled</span>
+            </label>
           </InlineSettingRow>
           <InlineSettingRow label="Cookie name" description="Name of the sticky-session cookie." required>
             <input value={upstream.sessionCookieName} onChange={(event) => onChange({ ...upstream, sessionCookieName: event.target.value })} placeholder="example: route" />
@@ -1427,10 +1456,16 @@ function UpstreamEditor({
             </>
           ) : null}
           <InlineSettingRow label="Cookie secure" description="Mark the sticky-session cookie as Secure.">
-            <input type="checkbox" checked={upstream.sessionCookieSecure} onChange={(event) => onChange({ ...upstream, sessionCookieSecure: event.target.checked })} />
+            <label className="checkbox settings-checkbox">
+              <input type="checkbox" checked={upstream.sessionCookieSecure} onChange={(event) => onChange({ ...upstream, sessionCookieSecure: event.target.checked })} />
+              <span>Enabled</span>
+            </label>
           </InlineSettingRow>
           <InlineSettingRow label="Cookie HttpOnly" description="Mark the sticky-session cookie as HttpOnly.">
-            <input type="checkbox" checked={upstream.sessionCookieHttpOnly} onChange={(event) => onChange({ ...upstream, sessionCookieHttpOnly: event.target.checked })} />
+            <label className="checkbox settings-checkbox">
+              <input type="checkbox" checked={upstream.sessionCookieHttpOnly} onChange={(event) => onChange({ ...upstream, sessionCookieHttpOnly: event.target.checked })} />
+              <span>Enabled</span>
+            </label>
           </InlineSettingRow>
         </div>
       </Section>

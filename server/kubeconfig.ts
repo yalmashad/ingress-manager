@@ -7,6 +7,10 @@ type KubeconfigDocument = {
       "tls-server-name"?: string;
     };
   }>;
+  contexts?: Array<{
+    name?: string;
+  }>;
+  "current-context"?: string;
 };
 
 const loopbackHosts = new Set(["127.0.0.1", "localhost", "::1"]);
@@ -45,4 +49,19 @@ export function rewriteLoopbackClusterServers(kubeconfig: string, rewriteHost: s
   }
 
   return changed ? YAML.stringify(parsed) : kubeconfig;
+}
+
+export function setKubeconfigCurrentContext(kubeconfig: string, contextName: string) {
+  const parsed = YAML.parse(kubeconfig) as KubeconfigDocument | null;
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("Invalid kubeconfig document.");
+  }
+
+  const contexts = Array.isArray(parsed.contexts) ? parsed.contexts : [];
+  if (!contexts.some((context) => context?.name === contextName)) {
+    throw new Error(`Context "${contextName}" was not found in the uploaded kubeconfig.`);
+  }
+
+  parsed["current-context"] = contextName;
+  return YAML.stringify(parsed);
 }

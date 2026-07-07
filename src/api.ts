@@ -26,3 +26,11 @@ export async function uploadKubeconfig(file: File | null, kubeconfig: string) {
     body: form,
   });
 }
+
+export async function selectKubeconfigContext(context: string) {
+  return fetchJson("/api/session/context", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ context }),
+  });
+}

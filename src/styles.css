@@ -308,6 +308,12 @@ select:focus-visible {
   background: var(--surface-strong);
 }
 
+.context-picker {
+  display: grid;
+  gap: 0.7rem;
+  padding-top: 0.2rem;
+}
+
 .manifest-editor {
   min-height: 68vh;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
@@ -673,6 +679,10 @@ select:focus-visible {
   padding: 0.42rem 0.5rem;
 }
 
+.settings-table-control .settings-checkbox input {
+  width: auto;
+}
+
 .settings-checklist {
   display: flex;
   flex-wrap: wrap;
@@ -701,9 +711,38 @@ select:focus-visible {
   text-align: center;
 }
 
-.transfer-pane select {
+.transfer-box {
   width: 100%;
   min-height: 8.5rem;
+  max-width: 100%;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-strong);
+}
+
+.transfer-option {
+  display: block;
+  width: max-content;
+  min-width: 100%;
+  padding: 0.42rem 0.55rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.transfer-option:hover,
+.transfer-option.active {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.transfer-option.active {
+  color: var(--accent-strong);
+  font-weight: 700;
 }
 
 .transfer-actions {

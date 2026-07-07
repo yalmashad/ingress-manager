@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import YAML from "yaml";
-import { fetchJson, uploadKubeconfig } from "./api";
+import { fetchJson, selectKubeconfigContext, uploadKubeconfig } from "./api";
 import {
   appModeLabels,
   builderResourceKinds,
@@ -49,8 +49,15 @@ import { validateManifest } from "./manifestValidation";
 
 type SessionStatus = {
   connected: boolean;
+  requiresContextSelection?: boolean;
   currentContext?: string;
   contexts?: string[];
+  contextDetails?: Array<{
+    name: string;
+    cluster?: string;
+    user?: string;
+    namespace?: string;
+  }>;
   clusters?: string[];
   users?: string[];
 };
@@ -287,6 +294,7 @@ function App() {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [clusterOptions, setClusterOptions] = useState<ClusterOptions>(() => emptyClusterOptions());
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedKubeContext, setSelectedKubeContext] = useState("");
   const [selected, setSelected] = useState<SelectedResource | null>(null);
   const [manifestText, setManifestText] = useState(emptyManifest);
   const [saving, setSaving] = useState(false);
@@ -397,6 +405,22 @@ function App() {
     void refreshOverview().catch((err: Error) => setError(err.message));
   }, [appMode]);
 
+  async function loadConnectedCluster(nextStatus: SessionStatus) {
+    setStatus(nextStatus);
+    const [nextOverview, nextCatalog, nextOptions] = await Promise.all([
+      fetchJson<Overview>("/api/overview"),
+      fetchJson<Catalog>("/api/catalog"),
+      fetchJson<ClusterOptions>("/api/options"),
+    ]);
+    setOverview(nextOverview);
+    setCatalog(nextCatalog);
+    setClusterOptions(nextOptions);
+    if (nextOptions.namespaces.length > 0) {
+      setCreateNamespace(nextOptions.namespaces[0]);
+    }
+    setNotice(`Connected to ${nextStatus.currentContext ?? "the selected cluster"}.`);
+  }
+
   useEffect(() => {
     if (skipManifestParseRef.current) {
       skipManifestParseRef.current = false;
@@ -426,20 +450,31 @@ function App() {
       setError(null);
       setNotice(null);
       const nextStatus = (await uploadKubeconfig(selectedFile, "")) as SessionStatus;
-      setStatus(nextStatus);
       setSelectedFile(null);
-      const [nextOverview, nextCatalog, nextOptions] = await Promise.all([
-        fetchJson<Overview>("/api/overview"),
-        fetchJson<Catalog>("/api/catalog"),
-        fetchJson<ClusterOptions>("/api/options"),
-      ]);
-      setOverview(nextOverview);
-      setCatalog(nextCatalog);
-      setClusterOptions(nextOptions);
-      if (nextOptions.namespaces.length > 0) {
-        setCreateNamespace(nextOptions.namespaces[0]);
+      setStatus(nextStatus);
+
+      if (nextStatus.requiresContextSelection && nextStatus.contexts?.length) {
+        setOverview(null);
+        setClusterOptions(emptyClusterOptions());
+        setSelectedKubeContext(nextStatus.currentContext && nextStatus.contexts.includes(nextStatus.currentContext) ? nextStatus.currentContext : nextStatus.contexts[0]);
+        setNotice("Select a kubeconfig context to connect to one cluster.");
+        return;
       }
-      setNotice(`Connected to ${nextStatus.currentContext ?? "the selected cluster"}.`);
+
+      setSelectedKubeContext("");
+      await loadConnectedCluster(nextStatus);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function handleSelectKubeContext() {
+    try {
+      setError(null);
+      setNotice(null);
+      const nextStatus = (await selectKubeconfigContext(selectedKubeContext)) as SessionStatus;
+      setSelectedKubeContext("");
+      await loadConnectedCluster(nextStatus);
     } catch (err) {
       setError((err as Error).message);
     }
@@ -453,6 +488,7 @@ function App() {
     setSelectedResourceKeys([]);
     setCreateOverlay(null);
     setGeneratedManifests([]);
+    setSelectedKubeContext("");
 
     if (nextMode === "generator") {
       setStatus({ connected: false });
@@ -881,11 +917,39 @@ function App() {
           <p className="muted">Current context: {status.currentContext ?? "not connected"}</p>
           <label className="field">
             <span>Kubeconfig file</span>
-            <input type="file" accept=".yaml,.yml,.conf,.config,*/*" onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)} />
+            <input
+              type="file"
+              accept=".yaml,.yml,.conf,.config,*/*"
+              onChange={(event) => {
+                setSelectedFile(event.target.files?.[0] ?? null);
+                setSelectedKubeContext("");
+              }}
+            />
           </label>
           <button className="primary" onClick={() => void handleImport()}>
             Import kubeconfig
           </button>
+          {status.requiresContextSelection && status.contexts?.length ? (
+            <div className="context-picker">
+              <label className="field">
+                <span>Cluster context</span>
+                <select value={selectedKubeContext} onChange={(event) => setSelectedKubeContext(event.target.value)}>
+                  {status.contexts.map((context) => {
+                    const detail = status.contextDetails?.find((item) => item.name === context);
+                    const suffix = [detail?.cluster, detail?.user].filter(Boolean).join(" / ");
+                    return (
+                      <option key={context} value={context}>
+                        {suffix ? `${context} (${suffix})` : context}
+                      </option>
+                    );
+                  })}
+                </select>
+              </label>
+              <button className="primary" onClick={() => void handleSelectKubeContext()} disabled={!selectedKubeContext}>
+                Connect to selected context
+              </button>
+            </div>
+          ) : null}
         </section>
         )}
 

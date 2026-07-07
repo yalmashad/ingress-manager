@@ -15,16 +15,34 @@ import {
   KubernetesObjectApi,
 } from "@kubernetes/client-node";
 import { resourceCatalog } from "./catalog.js";
-import { rewriteLoopbackClusterServers } from "./kubeconfig.js";
+import { rewriteLoopbackClusterServers, setKubeconfigCurrentContext } from "./kubeconfig.js";
 import { createResourceTemplate } from "./templates.js";
 
 declare module "express-session" {
   interface SessionData {
     kubeconfig?: string;
+    pendingContextSelection?: boolean;
   }
 }
 
 type AnyRecord = Record<string, any>;
+
+function kubeconfigStatus(kc: KubeConfig, connected: boolean, requiresContextSelection = false) {
+  return {
+    connected,
+    requiresContextSelection,
+    currentContext: kc.getCurrentContext(),
+    contexts: kc.getContexts().map((context) => context.name),
+    contextDetails: kc.getContexts().map((context) => ({
+      name: context.name,
+      cluster: context.cluster,
+      user: context.user,
+      namespace: context.namespace,
+    })),
+    clusters: kc.getClusters().map((cluster) => cluster.name),
+    users: kc.getUsers().map((user) => user.name),
+  };
+}
 
 const app = express();
 const upload = multer();
@@ -62,10 +80,13 @@ const customResourceKinds = new Map([
 
 const controllerKinds = new Set(["Deployment", "DaemonSet", "StatefulSet"]);
 
-function requireKubeconfig(req: express.Request) {
+function requireKubeconfig(req: express.Request, options: { allowPendingContext?: boolean } = {}) {
   const kubeconfig = req.session.kubeconfig;
   if (!kubeconfig) {
     throw new Error("No kubeconfig has been imported yet.");
+  }
+  if (req.session.pendingContextSelection && !options.allowPendingContext) {
+    throw new Error("Select a kubeconfig context before connecting to the cluster.");
   }
 
   const kc = new KubeConfig();
@@ -299,14 +320,8 @@ app.get("/api/session/status", (req, res) => {
   }
 
   try {
-    const { kc } = requireKubeconfig(req);
-    res.json({
-      connected: true,
-      currentContext: kc.getCurrentContext(),
-      contexts: kc.getContexts().map((context) => context.name),
-      clusters: kc.getClusters().map((cluster) => cluster.name),
-      users: kc.getUsers().map((user) => user.name),
-    });
+    const { kc } = requireKubeconfig(req, { allowPendingContext: true });
+    res.json(kubeconfigStatus(kc, !req.session.pendingContextSelection, Boolean(req.session.pendingContextSelection)));
   } catch (error) {
     const payload = toErrorPayload(error);
     res.status(payload.statusCode).json(payload);
@@ -327,14 +342,34 @@ app.post("/api/session/kubeconfig", upload.single("file"), (req, res) => {
     const kc = new KubeConfig();
     kc.loadFromString(kubeconfig);
     req.session.kubeconfig = kubeconfig;
+    const requiresContextSelection = kc.getClusters().length > 1 && kc.getContexts().length > 1;
+    req.session.pendingContextSelection = requiresContextSelection;
 
-    res.json({
-      connected: true,
-      currentContext: kc.getCurrentContext(),
-      contexts: kc.getContexts().map((context) => context.name),
-      clusters: kc.getClusters().map((cluster) => cluster.name),
-      users: kc.getUsers().map((user) => user.name),
-    });
+    res.json(kubeconfigStatus(kc, !requiresContextSelection, requiresContextSelection));
+  } catch (error) {
+    const payload = toErrorPayload(error);
+    res.status(400).json(payload);
+  }
+});
+
+app.post("/api/session/context", (req, res) => {
+  try {
+    const contextName = typeof req.body.context === "string" ? req.body.context : "";
+    if (!contextName.trim()) {
+      res.status(400).json({ message: "Select a kubeconfig context." });
+      return;
+    }
+    if (!req.session.kubeconfig) {
+      res.status(400).json({ message: "Import a kubeconfig before selecting a context." });
+      return;
+    }
+
+    const kubeconfig = setKubeconfigCurrentContext(req.session.kubeconfig, contextName);
+    const kc = new KubeConfig();
+    kc.loadFromString(kubeconfig);
+    req.session.kubeconfig = kubeconfig;
+    req.session.pendingContextSelection = false;
+    res.json(kubeconfigStatus(kc, true, false));
   } catch (error) {
     const payload = toErrorPayload(error);
     res.status(400).json(payload);

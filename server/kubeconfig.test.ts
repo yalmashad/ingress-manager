@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import YAML from "yaml";
-import { rewriteLoopbackClusterServers } from "./kubeconfig.js";
+import { rewriteLoopbackClusterServers, setKubeconfigCurrentContext } from "./kubeconfig.js";
 
 describe("rewriteLoopbackClusterServers", () => {
   it("rewrites localhost Kubernetes API endpoints and preserves the original TLS server name", () => {
@@ -46,5 +46,32 @@ describe("rewriteLoopbackClusterServers", () => {
     const kubeconfig = "clusters:\n  - name: local\n    cluster:\n      server: https://127.0.0.1:51177\n";
 
     expect(rewriteLoopbackClusterServers(kubeconfig, undefined)).toBe(kubeconfig);
+  });
+});
+
+describe("setKubeconfigCurrentContext", () => {
+  it("updates the current context to a selected kubeconfig context", () => {
+    const kubeconfig = YAML.stringify({
+      apiVersion: "v1",
+      "current-context": "dev",
+      contexts: [
+        { name: "dev", context: { cluster: "dev-cluster", user: "dev-user" } },
+        { name: "prod", context: { cluster: "prod-cluster", user: "prod-user" } },
+      ],
+    });
+
+    const updated = YAML.parse(setKubeconfigCurrentContext(kubeconfig, "prod"));
+
+    expect(updated["current-context"]).toBe("prod");
+  });
+
+  it("rejects a context that is not in the kubeconfig", () => {
+    const kubeconfig = YAML.stringify({
+      contexts: [{ name: "dev", context: { cluster: "dev-cluster" } }],
+    });
+
+    expect(() => setKubeconfigCurrentContext(kubeconfig, "missing")).toThrow(
+      'Context "missing" was not found in the uploaded kubeconfig.',
+    );
   });
 });
