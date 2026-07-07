@@ -45,6 +45,7 @@ import {
 import { emptyManifest } from "./templates";
 import { getInitialTheme, themeStorageKey, type Theme } from "./theme";
 import { validateManifest } from "./manifestValidation";
+import { findUnknownManifestPaths, preserveUnknownManifestFields } from "./manifestPreservation";
 
 type SessionStatus = {
   connected: boolean;
@@ -280,6 +281,35 @@ function manifestValidationMessage(manifest: Record<string, unknown>) {
   return errors.length ? `Manifest validation failed:\n${errors.map((item) => `- ${item}`).join("\n")}` : "";
 }
 
+function buildSupportedManifestFromRaw(manifest: Record<string, unknown>) {
+  if (manifest.kind === "Policy") {
+    const spec = (manifest.spec ?? {}) as Record<string, unknown>;
+    if (!Object.keys(spec).length) {
+      const metadata = (manifest.metadata ?? {}) as Record<string, unknown>;
+      return {
+        apiVersion: "k8s.nginx.org/v1",
+        kind: "Policy",
+        metadata: { name: metadata.name ?? "policy-name", namespace: metadata.namespace ?? "default" },
+        spec: {},
+      };
+    }
+    return buildPolicyManifest(parsePolicyManifest(manifest));
+  }
+  if (manifest.kind === "Secret") return buildSecretManifest(parseSecretManifest(manifest));
+  if (manifest.kind === "VirtualServer") return buildVirtualServerManifest(parseVirtualServerManifest(manifest));
+  if (manifest.kind === "GlobalConfiguration") return buildGlobalConfigurationManifest(parseGlobalConfigurationManifest(manifest));
+  if (manifest.kind === "TransportServer") return buildTransportServerManifest(parseTransportServerManifest(manifest));
+  if (manifest.kind === "VirtualServerRoute") return buildVirtualServerRouteManifest(parseVirtualServerRouteManifest(manifest));
+  return null;
+}
+
+function unknownFieldWarning(paths: string[]) {
+  if (!paths.length) return "";
+  const visible = paths.slice(0, 5).join(", ");
+  const suffix = paths.length > 5 ? `, and ${paths.length - 5} more` : "";
+  return `This manifest contains fields that are not represented in the GUI. They will be preserved in YAML: ${visible}${suffix}.`;
+}
+
 function App() {
   const [theme, setTheme] = useState<Theme>(() =>
     getInitialTheme(
@@ -301,6 +331,7 @@ function App() {
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [unsupportedFieldPaths, setUnsupportedFieldPaths] = useState<string[]>([]);
   const [createKind, setCreateKind] = useState("VirtualServer");
   const [createNamespace, setCreateNamespace] = useState("default");
   const [policyForm, setPolicyForm] = useState<PolicyForm>(defaultPolicyForm());
@@ -314,9 +345,15 @@ function App() {
   const [overlaySecretForm, setOverlaySecretForm] = useState<SecretForm>(defaultSecretForm());
   const [overlaySaving, setOverlaySaving] = useState(false);
   const skipManifestParseRef = useRef(false);
+  const rawManifestRef = useRef<Record<string, unknown> | null>(null);
   const [selectedResourceKeys, setSelectedResourceKeys] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [generatedManifests, setGeneratedManifests] = useState<string[]>([]);
+
+  function clearManifestPreservation() {
+    rawManifestRef.current = null;
+    setUnsupportedFieldPaths([]);
+  }
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -356,7 +393,14 @@ function App() {
             : builderKind === "TransportServer"
               ? buildTransportServerManifest(transportServerForm)
               : buildVirtualServerRouteManifest(virtualServerRouteForm);
-    const serialized = YAML.stringify(nextManifest);
+    const rawManifest = rawManifestRef.current;
+    const mergedManifest =
+      rawManifest && rawManifest.kind === nextManifest.kind
+        ? (preserveUnknownManifestFields(rawManifest, nextManifest) as Record<string, unknown>)
+        : nextManifest;
+    const nextUnsupportedPaths = rawManifest && rawManifest.kind === nextManifest.kind ? findUnknownManifestPaths(rawManifest, nextManifest) : [];
+    setUnsupportedFieldPaths(nextUnsupportedPaths);
+    const serialized = YAML.stringify(mergedManifest);
     setManifestText((current) => {
       if (current === serialized) {
         return current;
@@ -429,6 +473,9 @@ function App() {
     try {
       const parsed = YAML.parse(manifestText) as Record<string, unknown> | null;
       if (!parsed || typeof parsed !== "object") return;
+      const supportedManifest = buildSupportedManifestFromRaw(parsed);
+      rawManifestRef.current = supportedManifest ? parsed : null;
+      setUnsupportedFieldPaths(supportedManifest ? findUnknownManifestPaths(parsed, supportedManifest) : []);
 
       if (parsed.kind === "Policy") {
         setPolicyForm(parsePolicyManifest(parsed));
@@ -488,6 +535,7 @@ function App() {
     setCreateOverlay(null);
     setGeneratedManifests([]);
     setSelectedKubeContext("");
+    clearManifestPreservation();
 
     if (nextMode === "generator") {
       setStatus({ connected: false });
@@ -508,6 +556,7 @@ function App() {
     try {
       setLoadingResource(true);
       setError(null);
+      clearManifestPreservation();
       setSelected(nextSelected);
       setViewMode("edit");
       const params = new URLSearchParams({
@@ -529,6 +578,7 @@ function App() {
     try {
       setSelected(null);
       setError(null);
+      clearManifestPreservation();
       setCreateKind(kind);
       setViewMode("edit");
       if (kind === "Policy") {
@@ -1143,6 +1193,7 @@ function App() {
                       className="secondary"
                       onClick={() => {
                         setSelected(null);
+                        clearManifestPreservation();
                         setManifestText(emptyManifest);
                         setViewMode("list");
                       }}
@@ -1159,6 +1210,7 @@ function App() {
                     </button>
                   </div>
                 </div>
+                {unsupportedFieldPaths.length ? <div className="banner warning">{unknownFieldWarning(unsupportedFieldPaths)}</div> : null}
                 <textarea
                   className="manifest-editor"
                   value={manifestText}

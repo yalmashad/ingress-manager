@@ -1,0 +1,54 @@
+type Obj = Record<string, unknown>;
+
+function isObj(value: unknown): value is Obj {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function itemKey(value: unknown) {
+  if (!isObj(value)) return "";
+  if (typeof value.namespace === "string" && typeof value.name === "string") return `${value.namespace}/${value.name}`;
+  if (typeof value.name === "string") return `name:${value.name}`;
+  if (typeof value.path === "string") return `path:${value.path}`;
+  if (typeof value.host === "string") return `host:${value.host}`;
+  return "";
+}
+
+function matchingArrayItem(original: unknown[], generatedItem: unknown, index: number) {
+  const key = itemKey(generatedItem);
+  if (key) {
+    const match = original.find((item) => itemKey(item) === key);
+    if (match !== undefined) return match;
+  }
+  return original[index];
+}
+
+export function preserveUnknownManifestFields(original: unknown, generated: unknown): unknown {
+  if (Array.isArray(original) && Array.isArray(generated)) {
+    return generated.map((item, index) => preserveUnknownManifestFields(matchingArrayItem(original, item, index), item));
+  }
+
+  if (!isObj(original) || !isObj(generated)) {
+    return generated;
+  }
+
+  const merged: Obj = { ...generated };
+  for (const [key, value] of Object.entries(original)) {
+    merged[key] = key in generated ? preserveUnknownManifestFields(value, generated[key]) : value;
+  }
+  return merged;
+}
+
+export function findUnknownManifestPaths(original: unknown, generated: unknown, basePath = ""): string[] {
+  if (Array.isArray(original) && Array.isArray(generated)) {
+    return generated.flatMap((item, index) => findUnknownManifestPaths(matchingArrayItem(original, item, index), item, `${basePath}[${index}]`));
+  }
+
+  if (!isObj(original) || !isObj(generated)) {
+    return [];
+  }
+
+  return Object.entries(original).flatMap(([key, value]) => {
+    const path = basePath ? `${basePath}.${key}` : key;
+    return key in generated ? findUnknownManifestPaths(value, generated[key], path) : [path];
+  });
+}
