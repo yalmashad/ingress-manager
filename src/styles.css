@@ -731,7 +731,7 @@ select:focus-visible {
 
 .transfer-box {
   width: 100%;
-  min-height: 7rem;
+  height: 9.5rem;
   max-width: 100%;
   overflow: auto;
   border: 1px solid var(--border);
