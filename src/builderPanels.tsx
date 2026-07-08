@@ -171,6 +171,22 @@ function normalizeOptions(options: Option[]) {
   return options.map((option) => (typeof option === "string" ? { value: option, label: option } : option));
 }
 
+function hasClusterBackedCatalog(clusterOptions: ClusterOptions) {
+  return Boolean(
+    clusterOptions.namespaces.length ||
+      clusterOptions.ingressClasses.length ||
+      clusterOptions.policies.length ||
+      clusterOptions.dosResources.length ||
+      clusterOptions.tlsSecrets.length ||
+      (clusterOptions.apiKeySecrets?.length ?? 0) ||
+      (clusterOptions.htpasswdSecrets?.length ?? 0) ||
+      (clusterOptions.caSecrets?.length ?? 0) ||
+      (clusterOptions.oidcSecrets?.length ?? 0) ||
+      (clusterOptions.jwkSecrets?.length ?? 0) ||
+      clusterOptions.listeners.length,
+  );
+}
+
 function sectionTitle(title: string, description: string) {
   return (
     <summary>
@@ -371,6 +387,17 @@ function NamespaceField({
   onChange: (value: string) => void;
   clusterOptions: ClusterOptions;
 }) {
+  if (!hasClusterBackedCatalog(clusterOptions)) {
+    return (
+      <TextField
+        label="Namespace"
+        description="The Kubernetes namespace where this resource will live."
+        value={value}
+        onChange={onChange}
+        placeholder="default"
+      />
+    );
+  }
   const options = clusterOptions.namespaces.length
     ? clusterOptions.namespaces.map((namespace) => ({ value: namespace, label: namespace }))
     : [{ value, label: value || "default" }];
@@ -400,6 +427,17 @@ function SettingsNamespaceField({
   onChange: (value: string) => void;
   clusterOptions: ClusterOptions;
 }) {
+  if (!hasClusterBackedCatalog(clusterOptions)) {
+    return (
+      <SettingsTextField
+        label="Namespace"
+        description="The Kubernetes namespace where this resource will live."
+        value={value}
+        onChange={onChange}
+        placeholder="default"
+      />
+    );
+  }
   return (
     <SettingsSelectField
       label="Namespace"
@@ -420,6 +458,17 @@ function IngressClassField({
   onChange: (value: string) => void;
   clusterOptions: ClusterOptions;
 }) {
+  if (!hasClusterBackedCatalog(clusterOptions)) {
+    return (
+      <TextField
+        label="Ingress class"
+        description="Select which ingress controller instance should own this resource."
+        value={value}
+        onChange={onChange}
+        placeholder="example: nginx"
+      />
+    );
+  }
   return (
     <SelectField
       label="Ingress class"
@@ -440,6 +489,17 @@ function SettingsIngressClassField({
   onChange: (value: string) => void;
   clusterOptions: ClusterOptions;
 }) {
+  if (!hasClusterBackedCatalog(clusterOptions)) {
+    return (
+      <SettingsTextField
+        label="Ingress class"
+        description="Select which ingress controller instance should own this resource."
+        value={value}
+        onChange={onChange}
+        placeholder="example: nginx"
+      />
+    );
+  }
   return (
     <SettingsSelectField
       label="Ingress class"
@@ -684,6 +744,30 @@ function SettingsSecretSelect({
   namespace?: string;
   required?: boolean;
 }) {
+  if (!hasClusterBackedCatalog(clusterOptions)) {
+    return (
+      <SettingsTextField
+        label={label}
+        description={description}
+        value={value}
+        onChange={onChange}
+        placeholder={
+          secretType === "kubernetes.io/tls"
+            ? "example: tls-secret-name"
+            : secretType === "nginx.org/apikey"
+              ? "example: apikey-secret-name"
+              : secretType === "nginx.org/htpasswd"
+                ? "example: htpasswd-secret-name"
+                : secretType === "nginx.org/ca"
+                  ? "example: ca-secret-name"
+                  : secretType === "nginx.org/oidc"
+                    ? "example: oidc-secret-name"
+                    : "example: jwk-secret-name"
+        }
+        required={required}
+      />
+    );
+  }
   const options = sameNamespaceSecretOptions(typedSecretItems(clusterOptions, secretType), namespace, createTypedSecretValue, "Create Secret");
   return (
     <SettingsSelectField
@@ -720,6 +804,18 @@ function PolicyTransferField({
   onChange: (value: string) => void;
   clusterOptions: ClusterOptions;
 }) {
+  if (!hasClusterBackedCatalog(clusterOptions)) {
+    return (
+      <SettingsTextAreaField
+        label={label}
+        description={description}
+        value={value}
+        onChange={onChange}
+        placeholder={"example:\ndefault/policy-one\ndefault/policy-two"}
+        rows={4}
+      />
+    );
+  }
   const selected = splitLines(value);
   const selectedSet = new Set(selected);
   const available = clusterOptions.policies
@@ -950,6 +1046,18 @@ function PolicyRefsField({
   onCreateResource: (kind: string, options?: { namespace?: string; onCreated?: (value: string) => void }) => void;
   label?: string;
 }) {
+  if (!hasClusterBackedCatalog(clusterOptions)) {
+    return (
+      <SettingsTextAreaField
+        label={label}
+        description="Attach one or more Policy resources that NGINX should apply here."
+        value={value}
+        onChange={onChange}
+        placeholder={"example:\ndefault/policy-one\ndefault/policy-two"}
+        rows={4}
+      />
+    );
+  }
   return (
     <ResourceRefField
       label={label}
@@ -973,6 +1081,17 @@ function DosField({
   clusterOptions: ClusterOptions;
   onCreateResource: (kind: string, options?: { namespace?: string; onCreated?: (value: string) => void }) => void;
 }) {
+  if (!hasClusterBackedCatalog(clusterOptions)) {
+    return (
+      <TextField
+        label="DOS resource"
+        description="Reference an App Protect DoS resource for this object."
+        value={value}
+        onChange={onChange}
+        placeholder="example: default/dos-policy"
+      />
+    );
+  }
   return (
     <SelectField
       label="DOS resource"
@@ -1001,6 +1120,17 @@ function TlsSecretField({
   clusterOptions: ClusterOptions;
   onCreateResource: (kind: string, options?: { namespace?: string; onCreated?: (value: string) => void }) => void;
 }) {
+  if (!hasClusterBackedCatalog(clusterOptions)) {
+    return (
+      <TextField
+        label="TLS secret"
+        description="Choose the TLS secret used for HTTPS termination."
+        value={value}
+        onChange={onChange}
+        placeholder="example: tls-secret-name"
+      />
+    );
+  }
   return (
     <SelectField
       label="TLS secret"
@@ -1024,6 +1154,92 @@ function listenerOptions(clusterOptions: ClusterOptions) {
     ...clusterOptions.listeners.map((item) => ({ value: item, label: item })),
     { value: createListenerValue, label: "Create new listener..." },
   ];
+}
+
+function SettingsDosField({
+  value,
+  onChange,
+  clusterOptions,
+  onCreateResource,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  clusterOptions: ClusterOptions;
+  onCreateResource: (kind: string, options?: { namespace?: string; onCreated?: (value: string) => void }) => void;
+}) {
+  if (!hasClusterBackedCatalog(clusterOptions)) {
+    return (
+      <SettingsTextField
+        label="DOS resource"
+        description="Reference an App Protect DoS resource for this object."
+        value={value}
+        onChange={onChange}
+        placeholder="example: default/dos-policy"
+      />
+    );
+  }
+  return (
+    <SettingsSelectField
+      label="DOS resource"
+      description="Reference an App Protect DoS resource for this object."
+      value={value}
+      onChange={(next) => {
+        if (next === createDosValue) {
+          onCreateResource("DosProtectedResource", { onCreated: onChange });
+          return;
+        }
+        onChange(next);
+      }}
+      options={resourceOptions(clusterOptions.dosResources, createDosValue, "Create new DOS resource...")}
+    />
+  );
+}
+
+function SettingsListenerField({
+  label,
+  description,
+  value,
+  onChange,
+  clusterOptions,
+  onCreateResource,
+  required = false,
+}: {
+  label: string;
+  description: string;
+  value: string;
+  onChange: (value: string) => void;
+  clusterOptions: ClusterOptions;
+  onCreateResource: (kind: string, options?: { namespace?: string; onCreated?: (value: string) => void }) => void;
+  required?: boolean;
+}) {
+  if (!hasClusterBackedCatalog(clusterOptions)) {
+    return (
+      <SettingsTextField
+        label={label}
+        description={description}
+        value={value}
+        onChange={onChange}
+        placeholder="example: http-8083"
+        required={required}
+      />
+    );
+  }
+  return (
+    <SettingsSelectField
+      label={label}
+      description={description}
+      value={value}
+      onChange={(next) => {
+        if (next === createListenerValue) {
+          onCreateResource("GlobalConfiguration", { onCreated: onChange });
+          return;
+        }
+        onChange(next);
+      }}
+      options={listenerOptions(clusterOptions)}
+      required={required}
+    />
+  );
 }
 
 function resetRouteForAction(route: RouteForm, actionType: RouteActionType): RouteForm {
@@ -2129,21 +2345,7 @@ export function VirtualServerBuilderPanel({
           <SettingsNamespaceField value={form.namespace} onChange={(value) => update("namespace", value)} clusterOptions={clusterOptions} />
           <SettingsTextField label="Host" description="Unique host name served by this VirtualServer." value={form.host} onChange={(value) => update("host", value)} placeholder="example: cafe.example.com" required />
           <SettingsIngressClassField value={form.ingressClassName} onChange={(value) => update("ingressClassName", value)} clusterOptions={clusterOptions} />
-          {showAdvancedFields ? (
-            <SettingsSelectField
-              label="DOS resource"
-              description="Reference an App Protect DoS resource for this object."
-              value={form.dos}
-              onChange={(value) => {
-                if (value === createDosValue) {
-                  onCreateResource("DosProtectedResource", { onCreated: (created) => update("dos", created) });
-                  return;
-                }
-                update("dos", value);
-              }}
-              options={resourceOptions(clusterOptions.dosResources, createDosValue, "Create new DOS resource...")}
-            />
-          ) : null}
+          {showAdvancedFields ? <SettingsDosField value={form.dos} onChange={(value) => update("dos", value)} clusterOptions={clusterOptions} onCreateResource={onCreateResource} /> : null}
           <PolicyTransferField
             label="Policies"
             description="Attach one or more Policy resources that NGINX should apply here."
@@ -2179,8 +2381,8 @@ export function VirtualServerBuilderPanel({
 
       {showAdvancedFields ? <Section title="Custom Listeners" description="Custom listener names defined through GlobalConfiguration">
         <div className="settings-table">
-          <SettingsSelectField label="HTTP listener" description="HTTP listener name from a GlobalConfiguration resource." value={form.listenerHttp} onChange={(value) => value === createListenerValue ? onCreateResource("GlobalConfiguration", { onCreated: (created) => update("listenerHttp", created) }) : update("listenerHttp", value)} options={listenerOptions(clusterOptions)} />
-          <SettingsSelectField label="HTTPS listener" description="HTTPS listener name from a GlobalConfiguration resource." value={form.listenerHttps} onChange={(value) => value === createListenerValue ? onCreateResource("GlobalConfiguration", { onCreated: (created) => update("listenerHttps", created) }) : update("listenerHttps", value)} options={listenerOptions(clusterOptions)} />
+          <SettingsListenerField label="HTTP listener" description="HTTP listener name from a GlobalConfiguration resource." value={form.listenerHttp} onChange={(value) => update("listenerHttp", value)} clusterOptions={clusterOptions} onCreateResource={onCreateResource} />
+          <SettingsListenerField label="HTTPS listener" description="HTTPS listener name from a GlobalConfiguration resource." value={form.listenerHttps} onChange={(value) => update("listenerHttps", value)} clusterOptions={clusterOptions} onCreateResource={onCreateResource} />
         </div>
       </Section> : null}
 
@@ -2506,21 +2708,18 @@ export function TransportServerBuilderPanel({
           <SettingsNamespaceField value={form.namespace} onChange={(value) => update("namespace", value)} clusterOptions={clusterOptions} />
           <SettingsTextField label="Host" description="Optional SNI host used for TLS passthrough." value={form.host} onChange={(value) => update("host", value)} placeholder="example: tcp.example.com" />
           <SettingsIngressClassField value={form.ingressClassName} onChange={(value) => update("ingressClassName", value)} clusterOptions={clusterOptions} />
-          <SettingsSelectField label="Listener name" description="Listener created in GlobalConfiguration." value={form.listenerName} onChange={(value) => value === createListenerValue ? onCreateResource("GlobalConfiguration", { onCreated: (created) => update("listenerName", created) }) : update("listenerName", value)} options={listenerOptions(clusterOptions)} required />
+          <SettingsListenerField label="Listener name" description="Listener created in GlobalConfiguration." value={form.listenerName} onChange={(value) => update("listenerName", value)} clusterOptions={clusterOptions} onCreateResource={onCreateResource} required />
           <SettingsSelectField label="Listener protocol" description="Protocol used by this listener." value={form.listenerProtocol} onChange={(value) => update("listenerProtocol", value as TransportServerForm["listenerProtocol"])} options={transportListenerProtocolOptions} required />
           <SettingsTextField label="Action pass upstream" description="Upstream that receives matching TCP or UDP traffic." value={form.actionPass} onChange={(value) => update("actionPass", value)} placeholder="example: tcp-app" required />
-          <SettingsSelectField
+          <SettingsSecretSelect
             label="TLS secret"
             description="Choose the TLS secret used for HTTPS termination."
             value={form.tlsSecret}
-            onChange={(value) => {
-              if (value === createTlsSecretValue) {
-                onCreateResource("Secret", { onCreated: (created) => update("tlsSecret", created) });
-                return;
-              }
-              update("tlsSecret", value);
-            }}
-            options={sameNamespaceSecretOptions(clusterOptions.tlsSecrets, form.namespace, createTlsSecretValue, "Create Secret")}
+            onChange={(value) => update("tlsSecret", value)}
+            clusterOptions={clusterOptions}
+            onCreateResource={onCreateResource}
+            secretType="kubernetes.io/tls"
+            namespace={form.namespace}
           />
           <SettingsTextField label="Session timeout" description="Idle timeout between client and upstream packets." value={form.sessionTimeout} onChange={(value) => update("sessionTimeout", value)} placeholder="default: 10m" />
         </div>
