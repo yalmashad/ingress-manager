@@ -119,6 +119,7 @@ type CreateOverlay = {
 };
 
 type ViewMode = "list" | "edit";
+type ManifestEditSource = "gui" | "yaml" | "system";
 
 function badgeText(summary: ResourceSummary) {
   return summary.state || summary.summary || summary.namespace || "cluster";
@@ -405,6 +406,8 @@ function App() {
   const [overlaySaving, setOverlaySaving] = useState(false);
   const skipManifestParseRef = useRef(false);
   const rawManifestRef = useRef<Record<string, unknown> | null>(null);
+  const manifestEditorFocusedRef = useRef(false);
+  const manifestEditSourceRef = useRef<ManifestEditSource>("system");
   const [selectedResourceKeys, setSelectedResourceKeys] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [generatedManifests, setGeneratedManifests] = useState<string[]>([]);
@@ -464,11 +467,15 @@ function App() {
         : nextManifest;
     const nextUnsupportedPaths = rawManifest && rawManifest.kind === nextManifest.kind ? findUnknownManifestPaths(rawManifest, nextManifest) : [];
     setUnsupportedFieldPaths(nextUnsupportedPaths);
+    if (manifestEditorFocusedRef.current && manifestEditSourceRef.current === "yaml") {
+      return;
+    }
     const serialized = YAML.stringify(mergedManifest);
     setManifestText((current) => {
       if (current === serialized) {
         return current;
       }
+      manifestEditSourceRef.current = "gui";
       skipManifestParseRef.current = true;
       return serialized;
     });
@@ -609,9 +616,11 @@ function App() {
       setViewMode("list");
       setCreateKind("VirtualServer");
       setCreateNamespace("default");
+      manifestEditSourceRef.current = "system";
       setManifestText(emptyManifest);
     } else {
       setViewMode("list");
+      manifestEditSourceRef.current = "system";
       setManifestText(emptyManifest);
     }
   }
@@ -630,6 +639,7 @@ function App() {
       if (nextSelected.namespace) params.set("namespace", nextSelected.namespace);
       const resource = await fetchJson<Record<string, unknown>>(`/api/resource?${params.toString()}`);
       skipManifestParseRef.current = false;
+      manifestEditSourceRef.current = "system";
       setManifestText(YAML.stringify(stripRuntimeManifestFields(resource)));
     } catch (err) {
       setError((err as Error).message);
@@ -651,6 +661,7 @@ function App() {
         setPolicyForm(next);
         setPolicyTypeSelected(false);
         skipManifestParseRef.current = true;
+        manifestEditSourceRef.current = "system";
         setManifestText(
           YAML.stringify({
             apiVersion: "k8s.nginx.org/v1",
@@ -666,6 +677,7 @@ function App() {
         next.namespace = effectiveNamespace(createNamespace);
         setVirtualServerForm(next);
         skipManifestParseRef.current = true;
+        manifestEditSourceRef.current = "system";
         setManifestText(
           YAML.stringify({
             apiVersion: "k8s.nginx.org/v1",
@@ -681,6 +693,7 @@ function App() {
         next.namespace = effectiveNamespace(createNamespace);
         setGlobalConfigurationForm(next);
         skipManifestParseRef.current = true;
+        manifestEditSourceRef.current = "system";
         setManifestText(
           YAML.stringify({
             apiVersion: "k8s.nginx.org/v1",
@@ -696,6 +709,7 @@ function App() {
         next.namespace = effectiveNamespace(createNamespace);
         setTransportServerForm(next);
         skipManifestParseRef.current = true;
+        manifestEditSourceRef.current = "system";
         setManifestText(
           YAML.stringify({
             apiVersion: "k8s.nginx.org/v1",
@@ -711,6 +725,7 @@ function App() {
         next.namespace = effectiveNamespace(createNamespace);
         setVirtualServerRouteForm(next);
         skipManifestParseRef.current = true;
+        manifestEditSourceRef.current = "system";
         setManifestText(
           YAML.stringify({
             apiVersion: "k8s.nginx.org/v1",
@@ -726,17 +741,20 @@ function App() {
         next.namespace = effectiveNamespace(createNamespace);
         setSecretForm(next);
         skipManifestParseRef.current = true;
+        manifestEditSourceRef.current = "system";
         setManifestText(YAML.stringify(buildSecretManifest(next)));
         showNotice("Loaded a TLS Secret builder.");
         return;
       }
       if (kind === "DosProtectedResource") {
         skipManifestParseRef.current = true;
+        manifestEditSourceRef.current = "system";
         setManifestText(starterManifest("DosProtectedResource", effectiveNamespace(createNamespace)));
         showNotice("Loaded a DOS resource starter manifest.");
         return;
       }
       skipManifestParseRef.current = true;
+      manifestEditSourceRef.current = "system";
       setManifestText(starterManifest(kind, effectiveNamespace(createNamespace)));
     } catch (err) {
       setError((err as Error).message);
@@ -956,6 +974,7 @@ function App() {
       await fetchJson(`/api/resource?${params.toString()}`, { method: "DELETE" });
       showNotice(`${selected.kind} ${selected.name} deleted.`);
       setSelected(null);
+      manifestEditSourceRef.current = "system";
       setManifestText(emptyManifest);
       await refreshOverview();
     } catch (err) {
@@ -995,6 +1014,7 @@ function App() {
       }
       if (selected && targets.some((resource) => resource.name === selected.name && resource.namespace === selected.namespace)) {
         setSelected(null);
+        manifestEditSourceRef.current = "system";
         setManifestText(emptyManifest);
         setViewMode("list");
       }
@@ -1117,6 +1137,7 @@ function App() {
                     onClick={() => {
                       setCreateKind(kind);
                       setSelected(null);
+                      manifestEditSourceRef.current = "system";
                       setManifestText(emptyManifest);
                       setViewMode("list");
                     }}
@@ -1302,6 +1323,7 @@ function App() {
                       onClick={() => {
                         setSelected(null);
                         clearManifestPreservation();
+                        manifestEditSourceRef.current = "system";
                         setManifestText(emptyManifest);
                         setViewMode("list");
                       }}
@@ -1322,7 +1344,15 @@ function App() {
                 <textarea
                   className="manifest-editor"
                   value={manifestText}
+                  onFocus={() => {
+                    manifestEditorFocusedRef.current = true;
+                  }}
+                  onBlur={() => {
+                    manifestEditorFocusedRef.current = false;
+                    manifestEditSourceRef.current = "system";
+                  }}
                   onChange={(event) => {
+                    manifestEditSourceRef.current = "yaml";
                     skipManifestParseRef.current = false;
                     setManifestText(event.target.value);
                   }}
