@@ -28,6 +28,10 @@ export type SecretType =
   | "nginx.org/ca"
   | "nginx.org/oidc"
   | "nginx.org/jwk";
+export type ApiKeySecretEntry = {
+  clientId: string;
+  apiKey: string;
+};
 export type ApiKeySuppliedIn = "header" | "query" | "headerAndQuery";
 export type JwtMode = "localSecret" | "remoteJwks";
 export type RateLimitConditionType = "default" | "jwt" | "variable";
@@ -352,8 +356,7 @@ export type SecretForm = {
   secretType: SecretType;
   certificate: string;
   privateKey: string;
-  apiKeyName: string;
-  apiKeyValue: string;
+  apiKeys: ApiKeySecretEntry[];
   htpasswd: string;
   caCertificate: string;
   caCrl: string;
@@ -388,6 +391,13 @@ export const transportListenerProtocolOptions: TransportListenerProtocol[] = ["T
 export const corsMethodOptions = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
 export const cacheMethodOptions = ["GET", "HEAD", "POST"];
 export const rateKeyExamples = ["${binary_remote_addr}", "${request_uri}", "${request_method}", "${cookie_session}"];
+
+function defaultApiKeySecretEntry(): ApiKeySecretEntry {
+  return {
+    clientId: "client-name",
+    apiKey: "",
+  };
+}
 export const secretTypeOptions: Array<{ value: SecretType; label: string }> = [
   { value: "kubernetes.io/tls", label: "TLS secret" },
   { value: "nginx.org/apikey", label: "API key secret" },
@@ -1417,8 +1427,7 @@ export function defaultSecretForm(): SecretForm {
     secretType: "",
     certificate: "-----BEGIN CERTIFICATE-----\nPASTE_CERT_HERE\n-----END CERTIFICATE-----",
     privateKey: "-----BEGIN PRIVATE KEY-----\nPASTE_KEY_HERE\n-----END PRIVATE KEY-----",
-    apiKeyName: "client-name",
-    apiKeyValue: "",
+    apiKeys: [defaultApiKeySecretEntry()],
     htpasswd: "",
     caCertificate: "-----BEGIN CERTIFICATE-----\nPASTE_CA_CERT_HERE\n-----END CERTIFICATE-----",
     caCrl: "",
@@ -1428,11 +1437,14 @@ export function defaultSecretForm(): SecretForm {
 }
 
 export function buildSecretManifest(form: SecretForm) {
+  const apiKeyEntries = form.apiKeys.filter((entry) => entry.clientId.trim() || entry.apiKey.trim());
   const stringData =
     form.secretType === ""
       ? {}
       : form.secretType === "nginx.org/apikey"
-      ? { [form.apiKeyName.trim() || "client-name"]: form.apiKeyValue }
+      ? Object.fromEntries(
+          apiKeyEntries.map((entry) => [entry.clientId.trim() || "client-name", entry.apiKey]),
+        )
       : form.secretType === "nginx.org/htpasswd"
         ? { htpasswd: form.htpasswd }
         : form.secretType === "nginx.org/ca"
@@ -1482,10 +1494,13 @@ export function parseSecretManifest(manifest: Record<string, unknown>): SecretFo
       .filter(([key]) => key !== "tls.crt" && key !== "tls.key")
       .map(([key, value]) => [key, typeof value === "string" ? decodeBase64(value) : value] as [string, unknown]),
   ];
-  const apiKeyEntry = apiKeyEntries.find(([, value]) => String(value ?? "").trim()) ?? apiKeyEntries[0];
-  if (form.secretType === "nginx.org/apikey" && apiKeyEntry) {
-    form.apiKeyName = apiKeyEntry[0];
-    form.apiKeyValue = String(apiKeyEntry[1] ?? "");
+  if (form.secretType === "nginx.org/apikey") {
+    form.apiKeys = apiKeyEntries.length
+      ? apiKeyEntries.map(([clientId, value]) => ({
+          clientId,
+          apiKey: String(value ?? ""),
+        }))
+      : [defaultApiKeySecretEntry()];
   }
   form.htpasswd = String(stringData.htpasswd ?? (typeof data.htpasswd === "string" ? decodeBase64(data.htpasswd) : form.htpasswd));
   form.caCertificate = String(stringData["ca.crt"] ?? (typeof data["ca.crt"] === "string" ? decodeBase64(data["ca.crt"]) : form.caCertificate));

@@ -110,14 +110,14 @@ describe("manifest preservation", () => {
       kind: "Secret",
       metadata: { name: "apikey-secret" },
       type: "nginx.org/apikey",
-      data: { client1: "cGFzc3dvcmQ=" },
+      data: { client1: "cGFzc3dvcmQ=", client2: "cGFzc3dvcmQy" },
     };
     const generated = {
       apiVersion: "v1",
       kind: "Secret",
       metadata: { name: "apikey-secret", namespace: "default" },
       type: "nginx.org/apikey",
-      stringData: { client1: "password" },
+      stringData: { client1: "password", client2: "password2" },
     };
 
     expect(findUnknownManifestPaths(original, generated)).toEqual([]);

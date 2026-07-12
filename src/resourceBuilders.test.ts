@@ -45,12 +45,14 @@ describe("policy manifest builder", () => {
         ...defaultSecretForm(),
         name: "api-key-secret",
         secretType: "nginx.org/apikey",
-        apiKeyName: "client-a",
-        apiKeyValue: "secret-value",
+        apiKeys: [
+          { clientId: "client-a", apiKey: "secret-value" },
+          { clientId: "client-b", apiKey: "secret-value-2" },
+        ],
       }),
     ).toMatchObject({
       type: "nginx.org/apikey",
-      stringData: { "client-a": "secret-value" },
+      stringData: { "client-a": "secret-value", "client-b": "secret-value-2" },
     });
 
     expect(
@@ -158,12 +160,14 @@ describe("policy manifest builder", () => {
       kind: "Secret",
       metadata: { name: "apikey-secret", namespace: "default" },
       type: "nginx.org/apikey",
-      data: { client1: "cGFzc3dvcmQ=" },
+      data: { client1: "cGFzc3dvcmQ=", client2: "cGFzc3dvcmQy" },
     });
 
     expect(form.secretType).toBe("nginx.org/apikey");
-    expect(form.apiKeyName).toBe("client1");
-    expect(form.apiKeyValue).toBe("password");
+    expect(form.apiKeys).toEqual([
+      { clientId: "client1", apiKey: "password" },
+      { clientId: "client2", apiKey: "password2" },
+    ]);
   });
 
   it("builds API key policies with a selected secret and single supplied location", () => {

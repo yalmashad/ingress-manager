@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import YAML from "yaml";
 import {
+  type ApiKeySecretEntry,
   buildGlobalConfigurationManifest,
   buildPolicyManifest,
   buildSecretManifest,
@@ -2904,10 +2905,59 @@ export function SecretBuilderPanel({
 
       {form.secretType === "nginx.org/apikey" ? (
         <Section title="API Key" description="Key/value data for nginx.org/apikey secrets" defaultOpen>
-          <div className="settings-table">
-            <SettingsTextField label="Client name" description="Key name stored in the secret." value={form.apiKeyName} onChange={(value) => update("apiKeyName", value)} placeholder="example: client-a" required />
-            <SettingsTextField label="API key value" description="API key value stored under the client name." value={form.apiKeyValue} onChange={(value) => update("apiKeyValue", value)} placeholder="paste API key value" required />
+          <div className="panel-heading compact">
+            <h4>API key entries</h4>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() =>
+                update("apiKeys", [...form.apiKeys, { clientId: "", apiKey: "" }])
+              }
+            >
+              Add API key
+            </button>
           </div>
+          {form.apiKeys.map((entry, index) => {
+            const updateApiKeyEntry = (next: ApiKeySecretEntry) =>
+              update(
+                "apiKeys",
+                form.apiKeys.map((item, itemIndex) => (itemIndex === index ? next : item)),
+              );
+            return (
+              <div className="nested-card" key={`api-key-entry-${index}`}>
+                <div className="panel-heading compact">
+                  <h4>{entry.clientId || `Client ${index + 1}`}</h4>
+                  {form.apiKeys.length > 1 ? (
+                    <button
+                      type="button"
+                      className="danger"
+                      onClick={() => update("apiKeys", form.apiKeys.filter((_, itemIndex) => itemIndex !== index))}
+                    >
+                      Remove
+                    </button>
+                  ) : null}
+                </div>
+                <div className="settings-table">
+                  <SettingsTextField
+                    label="Client ID"
+                    description="Unique client identifier stored as the key in the secret."
+                    value={entry.clientId}
+                    onChange={(value) => updateApiKeyEntry({ ...entry, clientId: value })}
+                    placeholder="example: client-a"
+                    required
+                  />
+                  <SettingsTextField
+                    label="API key value"
+                    description="API key value stored under this client ID. Kubernetes stores it base64-encoded in Secret data."
+                    value={entry.apiKey}
+                    onChange={(value) => updateApiKeyEntry({ ...entry, apiKey: value })}
+                    placeholder="paste API key value"
+                    required
+                  />
+                </div>
+              </div>
+            );
+          })}
         </Section>
       ) : null}
 
