@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import YAML from "yaml";
+import type { AppMode } from "./appMode";
+import { useManualReferenceInputs } from "./builderMode";
 import {
   type ApiKeySecretEntry,
   buildGlobalConfigurationManifest,
@@ -65,6 +67,7 @@ export type ClusterOptions = {
 };
 
 type PropsCommon = {
+  appMode: AppMode;
   setManifestText: Dispatch<SetStateAction<string>>;
   setNotice: Dispatch<SetStateAction<string | null>>;
   clusterOptions: ClusterOptions;
@@ -170,22 +173,6 @@ function typedSecretItems(clusterOptions: ClusterOptions, secretType: SecretType
 
 function normalizeOptions(options: Option[]) {
   return options.map((option) => (typeof option === "string" ? { value: option, label: option } : option));
-}
-
-function hasClusterBackedCatalog(clusterOptions: ClusterOptions) {
-  return Boolean(
-    clusterOptions.namespaces.length ||
-      clusterOptions.ingressClasses.length ||
-      clusterOptions.policies.length ||
-      clusterOptions.dosResources.length ||
-      clusterOptions.tlsSecrets.length ||
-      (clusterOptions.apiKeySecrets?.length ?? 0) ||
-      (clusterOptions.htpasswdSecrets?.length ?? 0) ||
-      (clusterOptions.caSecrets?.length ?? 0) ||
-      (clusterOptions.oidcSecrets?.length ?? 0) ||
-      (clusterOptions.jwkSecrets?.length ?? 0) ||
-      clusterOptions.listeners.length,
-  );
 }
 
 function sectionTitle(title: string, description: string) {
@@ -383,12 +370,14 @@ function NamespaceField({
   value,
   onChange,
   clusterOptions,
+  appMode,
 }: {
   value: string;
   onChange: (value: string) => void;
   clusterOptions: ClusterOptions;
+  appMode: AppMode;
 }) {
-  if (!hasClusterBackedCatalog(clusterOptions)) {
+  if (useManualReferenceInputs(appMode)) {
     return (
       <TextField
         label="Namespace"
@@ -423,12 +412,14 @@ function SettingsNamespaceField({
   value,
   onChange,
   clusterOptions,
+  appMode,
 }: {
   value: string;
   onChange: (value: string) => void;
   clusterOptions: ClusterOptions;
+  appMode: AppMode;
 }) {
-  if (!hasClusterBackedCatalog(clusterOptions)) {
+  if (useManualReferenceInputs(appMode)) {
     return (
       <SettingsTextField
         label="Namespace"
@@ -454,12 +445,14 @@ function IngressClassField({
   value,
   onChange,
   clusterOptions,
+  appMode,
 }: {
   value: string;
   onChange: (value: string) => void;
   clusterOptions: ClusterOptions;
+  appMode: AppMode;
 }) {
-  if (!hasClusterBackedCatalog(clusterOptions)) {
+  if (useManualReferenceInputs(appMode)) {
     return (
       <TextField
         label="Ingress class"
@@ -485,12 +478,14 @@ function SettingsIngressClassField({
   value,
   onChange,
   clusterOptions,
+  appMode,
 }: {
   value: string;
   onChange: (value: string) => void;
   clusterOptions: ClusterOptions;
+  appMode: AppMode;
 }) {
-  if (!hasClusterBackedCatalog(clusterOptions)) {
+  if (useManualReferenceInputs(appMode)) {
     return (
       <SettingsTextField
         label="Ingress class"
@@ -727,6 +722,7 @@ function SettingsSecretSelect({
   value,
   onChange,
   clusterOptions,
+  appMode,
   onCreateResource,
   secretType,
   namespace,
@@ -737,6 +733,7 @@ function SettingsSecretSelect({
   value: string;
   onChange: (value: string) => void;
   clusterOptions: ClusterOptions;
+  appMode: AppMode;
   onCreateResource: (
     kind: string,
     options?: { namespace?: string; onCreated?: (value: string) => void; initialManifest?: string },
@@ -745,7 +742,7 @@ function SettingsSecretSelect({
   namespace?: string;
   required?: boolean;
 }) {
-  if (!hasClusterBackedCatalog(clusterOptions)) {
+  if (useManualReferenceInputs(appMode)) {
     return (
       <SettingsTextField
         label={label}
@@ -798,14 +795,16 @@ function PolicyTransferField({
   value,
   onChange,
   clusterOptions,
+  appMode,
 }: {
   label: string;
   description: string;
   value: string;
   onChange: (value: string) => void;
   clusterOptions: ClusterOptions;
+  appMode: AppMode;
 }) {
-  if (!hasClusterBackedCatalog(clusterOptions)) {
+  if (useManualReferenceInputs(appMode)) {
     return (
       <SettingsTextAreaField
         label={label}
@@ -1038,16 +1037,18 @@ function PolicyRefsField({
   value,
   onChange,
   clusterOptions,
+  appMode,
   onCreateResource,
   label = "Policy refs",
 }: {
   value: string;
   onChange: (value: string) => void;
   clusterOptions: ClusterOptions;
+  appMode: AppMode;
   onCreateResource: (kind: string, options?: { namespace?: string; onCreated?: (value: string) => void }) => void;
   label?: string;
 }) {
-  if (!hasClusterBackedCatalog(clusterOptions)) {
+  if (useManualReferenceInputs(appMode)) {
     return (
       <SettingsTextAreaField
         label={label}
@@ -1075,14 +1076,16 @@ function DosField({
   value,
   onChange,
   clusterOptions,
+  appMode,
   onCreateResource,
 }: {
   value: string;
   onChange: (value: string) => void;
   clusterOptions: ClusterOptions;
+  appMode: AppMode;
   onCreateResource: (kind: string, options?: { namespace?: string; onCreated?: (value: string) => void }) => void;
 }) {
-  if (!hasClusterBackedCatalog(clusterOptions)) {
+  if (useManualReferenceInputs(appMode)) {
     return (
       <TextField
         label="DOS resource"
@@ -1114,14 +1117,16 @@ function TlsSecretField({
   value,
   onChange,
   clusterOptions,
+  appMode,
   onCreateResource,
 }: {
   value: string;
   onChange: (value: string) => void;
   clusterOptions: ClusterOptions;
+  appMode: AppMode;
   onCreateResource: (kind: string, options?: { namespace?: string; onCreated?: (value: string) => void }) => void;
 }) {
-  if (!hasClusterBackedCatalog(clusterOptions)) {
+  if (useManualReferenceInputs(appMode)) {
     return (
       <TextField
         label="TLS secret"
@@ -1161,14 +1166,16 @@ function SettingsDosField({
   value,
   onChange,
   clusterOptions,
+  appMode,
   onCreateResource,
 }: {
   value: string;
   onChange: (value: string) => void;
   clusterOptions: ClusterOptions;
+  appMode: AppMode;
   onCreateResource: (kind: string, options?: { namespace?: string; onCreated?: (value: string) => void }) => void;
 }) {
-  if (!hasClusterBackedCatalog(clusterOptions)) {
+  if (useManualReferenceInputs(appMode)) {
     return (
       <SettingsTextField
         label="DOS resource"
@@ -1202,6 +1209,7 @@ function SettingsListenerField({
   value,
   onChange,
   clusterOptions,
+  appMode,
   onCreateResource,
   required = false,
 }: {
@@ -1210,10 +1218,11 @@ function SettingsListenerField({
   value: string;
   onChange: (value: string) => void;
   clusterOptions: ClusterOptions;
+  appMode: AppMode;
   onCreateResource: (kind: string, options?: { namespace?: string; onCreated?: (value: string) => void }) => void;
   required?: boolean;
 }) {
-  if (!hasClusterBackedCatalog(clusterOptions)) {
+  if (useManualReferenceInputs(appMode)) {
     return (
       <SettingsTextField
         label={label}
@@ -1713,6 +1722,7 @@ function RouteEditor({
   onChange,
   onRemove,
   clusterOptions,
+  appMode,
   onCreateResource,
   showAdvanced,
   showLocationSnippets = true,
@@ -1722,6 +1732,7 @@ function RouteEditor({
   onChange: (next: RouteForm) => void;
   onRemove?: () => void;
   clusterOptions: ClusterOptions;
+  appMode: AppMode;
   onCreateResource: (kind: string, options?: { namespace?: string; onCreated?: (value: string) => void }) => void;
   showAdvanced: boolean;
   showLocationSnippets?: boolean;
@@ -1765,6 +1776,7 @@ function RouteEditor({
             value={route.policyRefsText}
             onChange={(value) => onChange({ ...route, policyRefsText: value })}
             clusterOptions={clusterOptions}
+            appMode={appMode}
           />
           {showAdvanced && !route.delegateRoute.trim() ? (
             <SettingsTextAreaField label="Route selector" description="Advanced selector used when automatically including VirtualServerRoutes." value={route.routeSelectorText} onChange={(value) => onChange({ ...route, routeSelectorText: value })} placeholder={"example:\nmatchLabels:\n  app: cafe"} rows={5} />
@@ -1962,11 +1974,13 @@ function PolicySettings({
   form,
   update,
   clusterOptions,
+  appMode,
   onCreateResource,
 }: {
   form: PolicyForm;
   update: <K extends keyof PolicyForm>(key: K, value: PolicyForm[K]) => void;
   clusterOptions: ClusterOptions;
+  appMode: AppMode;
   onCreateResource: PropsCommon["onCreateResource"];
 }) {
   const hasAccessConflict = Boolean(form.accessAllow.trim() && form.accessDeny.trim());
@@ -2062,7 +2076,7 @@ function PolicySettings({
   if (form.policyType === "apiKey") {
     return (
       <div className="settings-table">
-        <SettingsSecretSelect label="Client secret" description="Secret of type nginx.org/apikey." value={form.apiKeyClientSecret} onChange={(value) => update("apiKeyClientSecret", value)} clusterOptions={clusterOptions} onCreateResource={onCreateResource} secretType="nginx.org/apikey" namespace={form.namespace} required />
+        <SettingsSecretSelect label="Client secret" description="Secret of type nginx.org/apikey." value={form.apiKeyClientSecret} onChange={(value) => update("apiKeyClientSecret", value)} clusterOptions={clusterOptions} appMode={appMode} onCreateResource={onCreateResource} secretType="nginx.org/apikey" namespace={form.namespace} required />
         <SettingsSelectField label="Supplied in" description="Where clients provide the API key." value={form.apiKeySuppliedIn} onChange={(value) => update("apiKeySuppliedIn", value as ApiKeySuppliedIn)} options={[{ value: "header", label: "Header" }, { value: "query", label: "Query parameter" }, { value: "headerAndQuery", label: "Header and query" }]} required />
         {form.apiKeySuppliedIn !== "query" ? (
           <SettingsTextField label="Header" description="HTTP header name that carries the API key." value={form.apiKeySuppliedHeader} onChange={(value) => update("apiKeySuppliedHeader", value)} placeholder="example: x-api-key" required />
@@ -2077,7 +2091,7 @@ function PolicySettings({
   if (form.policyType === "basicAuth") {
     return (
       <div className="settings-table">
-        <SettingsSecretSelect label="Htpasswd secret" description="Secret of type nginx.org/htpasswd." value={form.basicAuthSecret} onChange={(value) => update("basicAuthSecret", value)} clusterOptions={clusterOptions} onCreateResource={onCreateResource} secretType="nginx.org/htpasswd" namespace={form.namespace} required />
+        <SettingsSecretSelect label="Htpasswd secret" description="Secret of type nginx.org/htpasswd." value={form.basicAuthSecret} onChange={(value) => update("basicAuthSecret", value)} clusterOptions={clusterOptions} appMode={appMode} onCreateResource={onCreateResource} secretType="nginx.org/htpasswd" namespace={form.namespace} required />
         <SettingsTextField label="Realm" description="Browser prompt realm shown during authentication." value={form.basicAuthRealm} onChange={(value) => update("basicAuthRealm", value)} placeholder="example: Protected Area" />
       </div>
     );
@@ -2088,7 +2102,7 @@ function PolicySettings({
       <div className="settings-table">
         <SettingsSelectField label="JWT source" description="Use a local JWK secret or fetch keys from a remote JWKS endpoint." value={form.jwtMode} onChange={(value) => update("jwtMode", value as JwtMode)} options={[{ value: "localSecret", label: "JWT Using Local Kubernetes Secret" }, { value: "remoteJwks", label: "JWT Using JWKS From Remote Location" }]} required />
         {form.jwtMode === "localSecret" ? (
-          <SettingsSecretSelect label="JWK secret" description="Secret of type nginx.org/jwk." value={form.jwtSecret} onChange={(value) => update("jwtSecret", value)} clusterOptions={clusterOptions} onCreateResource={onCreateResource} secretType="nginx.org/jwk" namespace={form.namespace} required />
+          <SettingsSecretSelect label="JWK secret" description="Secret of type nginx.org/jwk." value={form.jwtSecret} onChange={(value) => update("jwtSecret", value)} clusterOptions={clusterOptions} appMode={appMode} onCreateResource={onCreateResource} secretType="nginx.org/jwk" namespace={form.namespace} required />
         ) : (
           <>
             <SettingsTextField label="JWKS URI" description="Remote JWKS endpoint used to validate tokens." value={form.jwtJwksUri} onChange={(value) => update("jwtJwksUri", value)} placeholder="example: https://idp.example.com/.well-known/jwks.json" required />
@@ -2099,7 +2113,7 @@ function PolicySettings({
         {form.jwtMode === "remoteJwks" ? (
           <>
             <SettingsTextField label="Key cache" description="How long JWKS keys should be cached." value={form.jwtKeyCache} onChange={(value) => update("jwtKeyCache", value)} placeholder="default: 1h" />
-            <SettingsSecretSelect label="Trusted cert secret" description="CA secret used to verify the JWKS endpoint." value={form.jwtTrustedCertSecret} onChange={(value) => update("jwtTrustedCertSecret", value)} clusterOptions={clusterOptions} onCreateResource={onCreateResource} secretType="nginx.org/ca" namespace={form.namespace} />
+            <SettingsSecretSelect label="Trusted cert secret" description="CA secret used to verify the JWKS endpoint." value={form.jwtTrustedCertSecret} onChange={(value) => update("jwtTrustedCertSecret", value)} clusterOptions={clusterOptions} appMode={appMode} onCreateResource={onCreateResource} secretType="nginx.org/ca" namespace={form.namespace} />
             <SettingsTextField label="SSL verify depth" description="Maximum certificate chain depth for the JWKS endpoint." value={form.jwtSslVerifyDepth} onChange={(value) => update("jwtSslVerifyDepth", value)} placeholder="default: 1" />
             <SettingsTextField label="SNI name" description="Explicit server name used during TLS to the JWKS endpoint." value={form.jwtSniName} onChange={(value) => update("jwtSniName", value)} placeholder="example: idp.example.com" />
             <SettingsToggleField label="Verify JWKS certificate" description="Require TLS certificate validation for the JWKS endpoint." checked={form.jwtSslVerify} onChange={(value) => update("jwtSslVerify", value)} />
@@ -2113,7 +2127,7 @@ function PolicySettings({
   if (form.policyType === "ingressMTLS") {
     return (
       <div className="settings-table">
-        <SettingsSecretSelect label="Client cert secret" description="Secret of type nginx.org/ca." value={form.ingressMtlsClientCertSecret} onChange={(value) => update("ingressMtlsClientCertSecret", value)} clusterOptions={clusterOptions} onCreateResource={onCreateResource} secretType="nginx.org/ca" namespace={form.namespace} required />
+        <SettingsSecretSelect label="Client cert secret" description="Secret of type nginx.org/ca." value={form.ingressMtlsClientCertSecret} onChange={(value) => update("ingressMtlsClientCertSecret", value)} clusterOptions={clusterOptions} appMode={appMode} onCreateResource={onCreateResource} secretType="nginx.org/ca" namespace={form.namespace} required />
         <SettingsSelectField label="Verify client" description="How strictly client certificates should be required and verified." value={form.ingressMtlsVerifyClient} onChange={(value) => update("ingressMtlsVerifyClient", value as VerifyClientMode)} options={verifyClientOptions} />
         <SettingsTextField label="Verify depth" description="Maximum client certificate chain depth." value={form.ingressMtlsVerifyDepth} onChange={(value) => update("ingressMtlsVerifyDepth", value)} placeholder="default: 1" />
         <SettingsTextField label="CRL file name" description="Optional CRL file name mounted into the controller." value={form.ingressMtlsCrlFileName} onChange={(value) => update("ingressMtlsCrlFileName", value)} placeholder="example: ca.crl" />
@@ -2124,8 +2138,8 @@ function PolicySettings({
   if (form.policyType === "egressMTLS") {
     return (
       <div className="settings-table">
-        <SettingsSecretSelect label="TLS secret" description="Secret of type kubernetes.io/tls for upstream client authentication." value={form.egressMtlsTlsSecret} onChange={(value) => update("egressMtlsTlsSecret", value)} clusterOptions={clusterOptions} onCreateResource={onCreateResource} secretType="kubernetes.io/tls" namespace={form.namespace} />
-        <SettingsSecretSelect label="Trusted cert secret" description="Secret of type nginx.org/ca for upstream server verification." value={form.egressMtlsTrustedCertSecret} onChange={(value) => update("egressMtlsTrustedCertSecret", value)} clusterOptions={clusterOptions} onCreateResource={onCreateResource} secretType="nginx.org/ca" namespace={form.namespace} />
+        <SettingsSecretSelect label="TLS secret" description="Secret of type kubernetes.io/tls for upstream client authentication." value={form.egressMtlsTlsSecret} onChange={(value) => update("egressMtlsTlsSecret", value)} clusterOptions={clusterOptions} appMode={appMode} onCreateResource={onCreateResource} secretType="kubernetes.io/tls" namespace={form.namespace} />
+        <SettingsSecretSelect label="Trusted cert secret" description="Secret of type nginx.org/ca for upstream server verification." value={form.egressMtlsTrustedCertSecret} onChange={(value) => update("egressMtlsTrustedCertSecret", value)} clusterOptions={clusterOptions} appMode={appMode} onCreateResource={onCreateResource} secretType="nginx.org/ca" namespace={form.namespace} />
         <SettingsToggleField label="Verify upstream certificate" description="Require certificate validation when connecting upstream." checked={form.egressMtlsVerifyServer} onChange={(value) => update("egressMtlsVerifyServer", value)} />
         <SettingsTextField label="Verify depth" description="Maximum upstream certificate chain depth." value={form.egressMtlsVerifyDepth} onChange={(value) => update("egressMtlsVerifyDepth", value)} placeholder="default: 1" />
         <SettingsTextField label="Protocols" description="TLS protocol list used for upstream mTLS." value={form.egressMtlsProtocols} onChange={(value) => update("egressMtlsProtocols", value)} placeholder="default: TLSv1 TLSv1.1 TLSv1.2" />
@@ -2145,7 +2159,7 @@ function PolicySettings({
         <SettingsTextAreaField label="Auth service ports" description="One or more service ports for the auth service." value={form.externalAuthServicePorts} onChange={(value) => update("externalAuthServicePorts", value)} placeholder="example: 4180" rows={2} />
         <SettingsTextField label="Signin URI" description="URI where unauthenticated users are redirected." value={form.externalAuthSigninUri} onChange={(value) => update("externalAuthSigninUri", value)} placeholder="example: /oauth2/signin" />
         <SettingsTextField label="Signin redirect base path" description="Base path used to build sign-in redirects." value={form.externalAuthSigninRedirectBasePath} onChange={(value) => update("externalAuthSigninRedirectBasePath", value)} placeholder="default: /oauth2" />
-        <SettingsSecretSelect label="Trusted cert secret" description="Secret of type nginx.org/ca used to verify the auth service." value={form.externalAuthTrustedCertSecret} onChange={(value) => update("externalAuthTrustedCertSecret", value)} clusterOptions={clusterOptions} onCreateResource={onCreateResource} secretType="nginx.org/ca" namespace={form.namespace} />
+        <SettingsSecretSelect label="Trusted cert secret" description="Secret of type nginx.org/ca used to verify the auth service." value={form.externalAuthTrustedCertSecret} onChange={(value) => update("externalAuthTrustedCertSecret", value)} clusterOptions={clusterOptions} appMode={appMode} onCreateResource={onCreateResource} secretType="nginx.org/ca" namespace={form.namespace} />
         <SettingsToggleField label="Use TLS to auth service" description="Connect to the external auth service with TLS." checked={form.externalAuthSslEnabled} onChange={(value) => update("externalAuthSslEnabled", value)} />
         <SettingsToggleField label="Verify auth service certificate" description="Require TLS certificate validation for the auth service." checked={form.externalAuthSslVerify} onChange={(value) => update("externalAuthSslVerify", value)} />
         <SettingsTextField label="SSL verify depth" description="Maximum certificate chain depth for the auth service." value={form.externalAuthSslVerifyDepth} onChange={(value) => update("externalAuthSslVerifyDepth", value)} placeholder="default: 1" />
@@ -2159,7 +2173,7 @@ function PolicySettings({
     return (
       <div className="settings-table">
         <SettingsTextField label="Client ID" description="OIDC client identifier registered with the provider." value={form.oidcClientId} onChange={(value) => update("oidcClientId", value)} placeholder="example: web-client" required />
-        <SettingsSecretSelect label="Client secret" description="Secret of type nginx.org/oidc. Not used when PKCE is enabled." value={form.oidcClientSecret} onChange={(value) => update("oidcClientSecret", value)} clusterOptions={clusterOptions} onCreateResource={onCreateResource} secretType="nginx.org/oidc" namespace={form.namespace} required={!form.oidcPkceEnable} />
+        <SettingsSecretSelect label="Client secret" description="Secret of type nginx.org/oidc. Not used when PKCE is enabled." value={form.oidcClientSecret} onChange={(value) => update("oidcClientSecret", value)} clusterOptions={clusterOptions} appMode={appMode} onCreateResource={onCreateResource} secretType="nginx.org/oidc" namespace={form.namespace} required={!form.oidcPkceEnable} />
         <SettingsTextField label="Auth endpoint" description="OIDC provider authorization endpoint URL." value={form.oidcAuthEndpoint} onChange={(value) => update("oidcAuthEndpoint", value)} placeholder="example: https://idp.example.com/auth" required />
         <SettingsTextField label="Token endpoint" description="OIDC provider token endpoint URL." value={form.oidcTokenEndpoint} onChange={(value) => update("oidcTokenEndpoint", value)} placeholder="example: https://idp.example.com/token" required />
         <SettingsTextField label="JWKS URI" description="OIDC provider key set endpoint URL." value={form.oidcJwksUri} onChange={(value) => update("oidcJwksUri", value)} placeholder="example: https://idp.example.com/keys" required />
@@ -2167,7 +2181,7 @@ function PolicySettings({
         <SettingsTextField label="Redirect URI" description="Callback path for the authorization code exchange." value={form.oidcRedirectUri} onChange={(value) => update("oidcRedirectUri", value)} placeholder="default: /_codexch" />
         <SettingsTextField label="Post-logout redirect URI" description="Path or URL to send users to after logout." value={form.oidcPostLogoutRedirectUri} onChange={(value) => update("oidcPostLogoutRedirectUri", value)} placeholder="default: /_logout" />
         <SettingsTextField label="Scope" description="OIDC scopes requested during login." value={form.oidcScope} onChange={(value) => update("oidcScope", value)} placeholder="default: openid" />
-        <SettingsSecretSelect label="Trusted cert secret" description="Secret of type nginx.org/ca used to verify the OIDC provider." value={form.oidcTrustedCertSecret} onChange={(value) => update("oidcTrustedCertSecret", value)} clusterOptions={clusterOptions} onCreateResource={onCreateResource} secretType="nginx.org/ca" namespace={form.namespace} />
+        <SettingsSecretSelect label="Trusted cert secret" description="Secret of type nginx.org/ca used to verify the OIDC provider." value={form.oidcTrustedCertSecret} onChange={(value) => update("oidcTrustedCertSecret", value)} clusterOptions={clusterOptions} appMode={appMode} onCreateResource={onCreateResource} secretType="nginx.org/ca" namespace={form.namespace} />
         <SettingsToggleField label="Enable PKCE" description="Use Proof Key for Code Exchange. Client secret is not used in this mode." checked={form.oidcPkceEnable} onChange={(value) => update("oidcPkceEnable", value)} />
         <SettingsToggleField label="Verify IdP certificate" description="Require TLS certificate validation for the OIDC provider." checked={form.oidcSslVerify} onChange={(value) => update("oidcSslVerify", value)} />
         <SettingsTextField label="SSL verify depth" description="Maximum certificate chain depth for the OIDC provider." value={form.oidcSslVerifyDepth} onChange={(value) => update("oidcSslVerifyDepth", value)} placeholder="default: 1" />
@@ -2248,6 +2262,7 @@ export function PolicyBuilderPanel({
   setManifestText,
   setNotice,
   clusterOptions,
+  appMode,
   onCreateResource,
 }: {
   form: PolicyForm;
@@ -2284,14 +2299,14 @@ export function PolicyBuilderPanel({
       <Section title="General" description="Identity, namespace, and policy category" defaultOpen>
         <div className="settings-table">
           <SettingsTextField label="Name" description="The Kubernetes name of this Policy resource." value={form.name} onChange={(value) => update("name", value)} placeholder="policy-name" required />
-          <SettingsNamespaceField value={form.namespace} onChange={(value) => update("namespace", value)} clusterOptions={clusterOptions} />
+          <SettingsNamespaceField value={form.namespace} onChange={(value) => update("namespace", value)} clusterOptions={clusterOptions} appMode={appMode} />
           <PolicyTypeField form={form} setForm={setForm} onSelected={() => setPolicyTypeSelected(true)} selected={policyTypeSelected} />
         </div>
       </Section>
 
       {policyTypeSelected ? (
         <Section title="Settings" description="Options for the selected policy type" defaultOpen>
-          <PolicySettings form={form} update={update} clusterOptions={clusterOptions} onCreateResource={onCreateResource} />
+          <PolicySettings form={form} update={update} clusterOptions={clusterOptions} appMode={appMode} onCreateResource={onCreateResource} />
         </Section>
       ) : null}
     </div>
@@ -2304,6 +2319,7 @@ export function VirtualServerBuilderPanel({
   setManifestText,
   setNotice,
   clusterOptions,
+  appMode,
   onCreateResource,
 }: { form: VirtualServerForm; setForm: Dispatch<SetStateAction<VirtualServerForm>> } & PropsCommon) {
   const update = <K extends keyof VirtualServerForm>(key: K, value: VirtualServerForm[K]) => setForm((current) => ({ ...current, [key]: value }));
@@ -2343,16 +2359,17 @@ export function VirtualServerBuilderPanel({
       <Section title="General" description="Identity, namespace, host, policies, and ownership" defaultOpen>
         <div className="settings-table">
           <SettingsTextField label="Name" description="The Kubernetes name of this VirtualServer." value={form.name} onChange={(value) => update("name", value)} placeholder="example: cafe" required />
-          <SettingsNamespaceField value={form.namespace} onChange={(value) => update("namespace", value)} clusterOptions={clusterOptions} />
+          <SettingsNamespaceField value={form.namespace} onChange={(value) => update("namespace", value)} clusterOptions={clusterOptions} appMode={appMode} />
           <SettingsTextField label="Host" description="Unique host name served by this VirtualServer." value={form.host} onChange={(value) => update("host", value)} placeholder="example: cafe.example.com" required />
-          <SettingsIngressClassField value={form.ingressClassName} onChange={(value) => update("ingressClassName", value)} clusterOptions={clusterOptions} />
-          {showAdvancedFields ? <SettingsDosField value={form.dos} onChange={(value) => update("dos", value)} clusterOptions={clusterOptions} onCreateResource={onCreateResource} /> : null}
+          <SettingsIngressClassField value={form.ingressClassName} onChange={(value) => update("ingressClassName", value)} clusterOptions={clusterOptions} appMode={appMode} />
+          {showAdvancedFields ? <SettingsDosField value={form.dos} onChange={(value) => update("dos", value)} clusterOptions={clusterOptions} appMode={appMode} onCreateResource={onCreateResource} /> : null}
           <PolicyTransferField
             label="Policies"
             description="Attach one or more Policy resources that NGINX should apply here."
             value={form.policyRefsText}
             onChange={(value) => update("policyRefsText", value)}
             clusterOptions={clusterOptions}
+            appMode={appMode}
           />
           {showAdvancedFields ? <SettingsBooleanField label="Internal route" description="Mark the VirtualServer as internal-only." value={form.internalRoute} onChange={(value) => update("internalRoute", value)} /> : null}
           <SettingsBooleanField label="Enable gunzip" description="Allow NGINX to decompress gzipped upstream responses." value={form.gunzip} onChange={(value) => update("gunzip", value)} />
@@ -2382,8 +2399,8 @@ export function VirtualServerBuilderPanel({
 
       {showAdvancedFields ? <Section title="Custom Listeners" description="Custom listener names defined through GlobalConfiguration">
         <div className="settings-table">
-          <SettingsListenerField label="HTTP listener" description="HTTP listener name from a GlobalConfiguration resource." value={form.listenerHttp} onChange={(value) => update("listenerHttp", value)} clusterOptions={clusterOptions} onCreateResource={onCreateResource} />
-          <SettingsListenerField label="HTTPS listener" description="HTTPS listener name from a GlobalConfiguration resource." value={form.listenerHttps} onChange={(value) => update("listenerHttps", value)} clusterOptions={clusterOptions} onCreateResource={onCreateResource} />
+          <SettingsListenerField label="HTTP listener" description="HTTP listener name from a GlobalConfiguration resource." value={form.listenerHttp} onChange={(value) => update("listenerHttp", value)} clusterOptions={clusterOptions} appMode={appMode} onCreateResource={onCreateResource} />
+          <SettingsListenerField label="HTTPS listener" description="HTTPS listener name from a GlobalConfiguration resource." value={form.listenerHttps} onChange={(value) => update("listenerHttps", value)} clusterOptions={clusterOptions} appMode={appMode} onCreateResource={onCreateResource} />
         </div>
       </Section> : null}
 
@@ -2405,6 +2422,7 @@ export function VirtualServerBuilderPanel({
               value={form.tlsSecret}
               onChange={(value) => update("tlsSecret", value)}
               clusterOptions={clusterOptions}
+              appMode={appMode}
               onCreateResource={onCreateResource}
               secretType="kubernetes.io/tls"
               namespace={form.namespace}
@@ -2519,6 +2537,7 @@ export function VirtualServerBuilderPanel({
             onChange={(next) => update("routes", updateAtIndex(form.routes, index, next))}
             onRemove={() => update("routes", form.routes.filter((_, itemIndex) => itemIndex !== index))}
             clusterOptions={clusterOptions}
+            appMode={appMode}
             onCreateResource={onCreateResource}
             showAdvanced={showAdvancedFields}
             showLocationSnippets={false}
@@ -2587,6 +2606,7 @@ export function GlobalConfigurationBuilderPanel({
   setManifestText,
   setNotice,
   clusterOptions,
+  appMode,
   onCreateResource: _onCreateResource,
 }: { form: GlobalConfigurationForm; setForm: Dispatch<SetStateAction<GlobalConfigurationForm>> } & PropsCommon) {
   const update = <K extends keyof GlobalConfigurationForm>(key: K, value: GlobalConfigurationForm[K]) => setForm((current) => ({ ...current, [key]: value }));
@@ -2607,7 +2627,7 @@ export function GlobalConfigurationBuilderPanel({
       <Section title="General" description="Resource identity and namespace" defaultOpen>
         <div className="settings-table">
           <SettingsTextField label="Name" description="The Kubernetes name of this GlobalConfiguration." value={form.name} onChange={(value) => update("name", value)} placeholder="example: nginx-global" required />
-          <SettingsNamespaceField value={form.namespace} onChange={(value) => update("namespace", value)} clusterOptions={clusterOptions} />
+          <SettingsNamespaceField value={form.namespace} onChange={(value) => update("namespace", value)} clusterOptions={clusterOptions} appMode={appMode} />
         </div>
       </Section>
 
@@ -2686,6 +2706,7 @@ export function TransportServerBuilderPanel({
   setManifestText,
   setNotice,
   clusterOptions,
+  appMode,
   onCreateResource,
 }: { form: TransportServerForm; setForm: Dispatch<SetStateAction<TransportServerForm>> } & PropsCommon) {
   const update = <K extends keyof TransportServerForm>(key: K, value: TransportServerForm[K]) => setForm((current) => ({ ...current, [key]: value }));
@@ -2706,10 +2727,10 @@ export function TransportServerBuilderPanel({
       <Section title="General" description="Identity, namespace, listener, and primary action" defaultOpen>
         <div className="settings-table">
           <SettingsTextField label="Name" description="The Kubernetes name of this TransportServer." value={form.name} onChange={(value) => update("name", value)} placeholder="example: mysql" required />
-          <SettingsNamespaceField value={form.namespace} onChange={(value) => update("namespace", value)} clusterOptions={clusterOptions} />
+          <SettingsNamespaceField value={form.namespace} onChange={(value) => update("namespace", value)} clusterOptions={clusterOptions} appMode={appMode} />
           <SettingsTextField label="Host" description="Optional SNI host used for TLS passthrough." value={form.host} onChange={(value) => update("host", value)} placeholder="example: tcp.example.com" />
-          <SettingsIngressClassField value={form.ingressClassName} onChange={(value) => update("ingressClassName", value)} clusterOptions={clusterOptions} />
-          <SettingsListenerField label="Listener name" description="Listener created in GlobalConfiguration." value={form.listenerName} onChange={(value) => update("listenerName", value)} clusterOptions={clusterOptions} onCreateResource={onCreateResource} required />
+          <SettingsIngressClassField value={form.ingressClassName} onChange={(value) => update("ingressClassName", value)} clusterOptions={clusterOptions} appMode={appMode} />
+          <SettingsListenerField label="Listener name" description="Listener created in GlobalConfiguration." value={form.listenerName} onChange={(value) => update("listenerName", value)} clusterOptions={clusterOptions} appMode={appMode} onCreateResource={onCreateResource} required />
           <SettingsSelectField label="Listener protocol" description="Protocol used by this listener." value={form.listenerProtocol} onChange={(value) => update("listenerProtocol", value as TransportServerForm["listenerProtocol"])} options={transportListenerProtocolOptions} required />
           <SettingsTextField label="Action pass upstream" description="Upstream that receives matching TCP or UDP traffic." value={form.actionPass} onChange={(value) => update("actionPass", value)} placeholder="example: tcp-app" required />
           <SettingsSecretSelect
@@ -2718,6 +2739,7 @@ export function TransportServerBuilderPanel({
             value={form.tlsSecret}
             onChange={(value) => update("tlsSecret", value)}
             clusterOptions={clusterOptions}
+            appMode={appMode}
             onCreateResource={onCreateResource}
             secretType="kubernetes.io/tls"
             namespace={form.namespace}
@@ -2770,6 +2792,7 @@ export function VirtualServerRouteBuilderPanel({
   setManifestText,
   setNotice,
   clusterOptions,
+  appMode,
   onCreateResource,
 }: { form: VirtualServerRouteForm; setForm: Dispatch<SetStateAction<VirtualServerRouteForm>> } & PropsCommon) {
   const update = <K extends keyof VirtualServerRouteForm>(key: K, value: VirtualServerRouteForm[K]) => setForm((current) => ({ ...current, [key]: value }));
@@ -2790,9 +2813,9 @@ export function VirtualServerRouteBuilderPanel({
       <Section title="General" description="Identity, namespace, host, and ingress ownership" defaultOpen>
         <div className="settings-table">
           <SettingsTextField label="Name" description="The Kubernetes name of this VirtualServerRoute." value={form.name} onChange={(value) => update("name", value)} placeholder="example: cafe-routes" required />
-          <SettingsNamespaceField value={form.namespace} onChange={(value) => update("namespace", value)} clusterOptions={clusterOptions} />
+          <SettingsNamespaceField value={form.namespace} onChange={(value) => update("namespace", value)} clusterOptions={clusterOptions} appMode={appMode} />
           <SettingsTextField label="Host" description="Host name that must match the parent VirtualServer." value={form.host} onChange={(value) => update("host", value)} placeholder="example: cafe.example.com" required />
-          <SettingsIngressClassField value={form.ingressClassName} onChange={(value) => update("ingressClassName", value)} clusterOptions={clusterOptions} />
+          <SettingsIngressClassField value={form.ingressClassName} onChange={(value) => update("ingressClassName", value)} clusterOptions={clusterOptions} appMode={appMode} />
         </div>
       </Section>
 
@@ -2828,6 +2851,7 @@ export function VirtualServerRouteBuilderPanel({
             onChange={(next) => update("subroutes", updateAtIndex(form.subroutes, index, next))}
             onRemove={form.subroutes.length > 1 ? () => update("subroutes", form.subroutes.filter((_, itemIndex) => itemIndex !== index)) : undefined}
             clusterOptions={clusterOptions}
+            appMode={appMode}
             onCreateResource={onCreateResource}
             showAdvanced
           />
@@ -2843,6 +2867,7 @@ export function SecretBuilderPanel({
   setManifestText,
   setNotice,
   clusterOptions,
+  appMode,
   showApplyButton = true,
   secretTypeChoices,
 }: {
@@ -2889,7 +2914,7 @@ export function SecretBuilderPanel({
       <Section title="General" description="Name, namespace, and secret type" defaultOpen>
         <div className="settings-table">
           <SettingsTextField label="Secret name" description="The Kubernetes name of this secret." value={form.name} onChange={(value) => update("name", value)} placeholder="secret-name" required />
-          <SettingsNamespaceField value={form.namespace} onChange={(value) => update("namespace", value)} clusterOptions={clusterOptions} />
+          <SettingsNamespaceField value={form.namespace} onChange={(value) => update("namespace", value)} clusterOptions={clusterOptions} appMode={appMode} />
           <SettingsSelectField label="Secret type" description="Secret type expected by NGINX Ingress Controller policies." value={form.secretType} onChange={(value) => update("secretType", value as SecretType)} options={availableSecretTypeOptions} required />
         </div>
       </Section>

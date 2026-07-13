@@ -1294,24 +1294,25 @@ function App() {
                   setManifestText={setManifestText}
                   setNotice={setNotice}
                   clusterOptions={clusterOptions}
+                  appMode={appMode ?? "manager"}
                   onSubmitManifest={submitResourceManifest}
                   onCreateResource={handleCreateRelatedResource}
                 />
               )}
               {builderKind === "Secret" && (
-                <SecretBuilderPanel form={secretForm} setForm={setSecretForm} setManifestText={setManifestText} setNotice={setNotice} clusterOptions={clusterOptions} onSubmitManifest={submitResourceManifest} onCreateResource={handleCreateRelatedResource} />
+                <SecretBuilderPanel form={secretForm} setForm={setSecretForm} setManifestText={setManifestText} setNotice={setNotice} clusterOptions={clusterOptions} appMode={appMode ?? "manager"} onSubmitManifest={submitResourceManifest} onCreateResource={handleCreateRelatedResource} />
               )}
               {builderKind === "VirtualServer" && (
-                <VirtualServerBuilderPanel form={virtualServerForm} setForm={setVirtualServerForm} setManifestText={setManifestText} setNotice={setNotice} clusterOptions={clusterOptions} onSubmitManifest={submitResourceManifest} onCreateResource={handleCreateRelatedResource} />
+                <VirtualServerBuilderPanel form={virtualServerForm} setForm={setVirtualServerForm} setManifestText={setManifestText} setNotice={setNotice} clusterOptions={clusterOptions} appMode={appMode ?? "manager"} onSubmitManifest={submitResourceManifest} onCreateResource={handleCreateRelatedResource} />
               )}
               {builderKind === "GlobalConfiguration" && (
-                <GlobalConfigurationBuilderPanel form={globalConfigurationForm} setForm={setGlobalConfigurationForm} setManifestText={setManifestText} setNotice={setNotice} clusterOptions={clusterOptions} onSubmitManifest={submitResourceManifest} onCreateResource={handleCreateRelatedResource} />
+                <GlobalConfigurationBuilderPanel form={globalConfigurationForm} setForm={setGlobalConfigurationForm} setManifestText={setManifestText} setNotice={setNotice} clusterOptions={clusterOptions} appMode={appMode ?? "manager"} onSubmitManifest={submitResourceManifest} onCreateResource={handleCreateRelatedResource} />
               )}
               {builderKind === "TransportServer" && (
-                <TransportServerBuilderPanel form={transportServerForm} setForm={setTransportServerForm} setManifestText={setManifestText} setNotice={setNotice} clusterOptions={clusterOptions} onSubmitManifest={submitResourceManifest} onCreateResource={handleCreateRelatedResource} />
+                <TransportServerBuilderPanel form={transportServerForm} setForm={setTransportServerForm} setManifestText={setManifestText} setNotice={setNotice} clusterOptions={clusterOptions} appMode={appMode ?? "manager"} onSubmitManifest={submitResourceManifest} onCreateResource={handleCreateRelatedResource} />
               )}
               {builderKind === "VirtualServerRoute" && (
-                <VirtualServerRouteBuilderPanel form={virtualServerRouteForm} setForm={setVirtualServerRouteForm} setManifestText={setManifestText} setNotice={setNotice} clusterOptions={clusterOptions} onSubmitManifest={submitResourceManifest} onCreateResource={handleCreateRelatedResource} />
+                <VirtualServerRouteBuilderPanel form={virtualServerRouteForm} setForm={setVirtualServerRouteForm} setManifestText={setManifestText} setNotice={setNotice} clusterOptions={clusterOptions} appMode={appMode ?? "manager"} onSubmitManifest={submitResourceManifest} onCreateResource={handleCreateRelatedResource} />
               )}
 
               <div className="editor-panel">
@@ -1402,6 +1403,7 @@ function App() {
                   }
                   setNotice={setNotice}
                   clusterOptions={clusterOptions}
+                  appMode={appMode ?? "manager"}
                   onSubmitManifest={submitResourceManifest}
                   onCreateResource={handleCreateRelatedResource}
                   showApplyButton={false}
