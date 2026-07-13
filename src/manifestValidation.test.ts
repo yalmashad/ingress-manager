@@ -38,7 +38,125 @@ describe("manifest validation", () => {
     );
   });
 
-  it("accepts a VirtualServer with defined upstreams, default action, matches, and weighted splits on separate routes", () => {
+  it("rejects namespace-qualified VirtualServer TLS secret references", () => {
+    expect(
+      validateManifest({
+        apiVersion: "k8s.nginx.org/v1",
+        kind: "VirtualServer",
+        metadata: { name: "my-vs", namespace: "default" },
+        spec: {
+          host: "app.example.com",
+          tls: { secret: "default/example-tls-secret" },
+          upstreams: [{ name: "app", service: "nginx-service", port: 80 }],
+          routes: [{ path: "/", action: { pass: "app" } }],
+        },
+      }),
+    ).toContain("spec.tls.secret must be a same-namespace TLS secret name, not namespace/name.");
+  });
+
+  it("validates TransportServer listener and upstream references", () => {
+    expect(
+      validateManifest({
+        apiVersion: "k8s.nginx.org/v1alpha1",
+        kind: "TransportServer",
+        metadata: { name: "ts", namespace: "default" },
+        spec: {
+          listener: { protocol: "TCP" },
+          action: { pass: "missing" },
+          upstreams: [{ service: "tcp-app", port: 9000 }],
+          tls: { secret: "default/tcp-secret" },
+        },
+      }),
+    ).toEqual(
+      expect.arrayContaining([
+        "spec.listener.name is required.",
+        'spec.action.pass references upstream "missing", but spec.upstreams does not define it.',
+        "spec.upstreams[0].name is required.",
+        "spec.tls.secret must be a same-namespace TLS secret name, not namespace/name.",
+      ]),
+    );
+  });
+
+  it("validates VirtualServerRoute subroutes against defined upstreams", () => {
+    expect(
+      validateManifest({
+        apiVersion: "k8s.nginx.org/v1",
+        kind: "VirtualServerRoute",
+        metadata: { name: "route-set", namespace: "default" },
+        spec: {
+          host: "app.example.com",
+          upstreams: [{ name: "tea", service: "tea-svc", port: 80 }],
+          subroutes: [{ path: "/coffee", action: { pass: "coffee" } }],
+        },
+      }),
+    ).toContain('spec.subroutes[0].action.pass references upstream "coffee", but spec.upstreams does not define it.');
+  });
+
+  it("validates policy-specific required fields", () => {
+    expect(
+      validateManifest({
+        apiVersion: "k8s.nginx.org/v1",
+        kind: "Policy",
+        metadata: { name: "jwt-policy", namespace: "default" },
+        spec: { jwt: {} },
+      }),
+    ).toEqual(expect.arrayContaining(["spec.jwt requires either secret or jwksURI."]));
+
+    expect(
+      validateManifest({
+        apiVersion: "k8s.nginx.org/v1",
+        kind: "Policy",
+        metadata: { name: "oidc-policy", namespace: "default" },
+        spec: { oidc: { clientID: "web-client", authEndpoint: "https://idp/auth" } },
+      }),
+    ).toEqual(
+      expect.arrayContaining([
+        "spec.oidc.tokenEndpoint is required.",
+        "spec.oidc.jwksURI is required.",
+        "spec.oidc.clientSecret is required unless pkceEnable is true.",
+      ]),
+    );
+  });
+
+  it("validates nginx ingress secret payload requirements", () => {
+    expect(
+      validateManifest({
+        apiVersion: "v1",
+        kind: "Secret",
+        metadata: { name: "tls-secret", namespace: "default" },
+        type: "kubernetes.io/tls",
+        stringData: { "tls.crt": "cert" },
+      }),
+    ).toContain('tls secrets require "tls.key".');
+
+    expect(
+      validateManifest({
+        apiVersion: "v1",
+        kind: "Secret",
+        metadata: { name: "apikey-secret", namespace: "default" },
+        type: "nginx.org/apikey",
+        stringData: {},
+      }),
+    ).toContain("nginx.org/apikey secrets require at least one client ID entry.");
+  });
+
+  it("validates GlobalConfiguration listener uniqueness", () => {
+    expect(
+      validateManifest({
+        apiVersion: "k8s.nginx.org/v1alpha1",
+        kind: "GlobalConfiguration",
+        metadata: { name: "global", namespace: "default" },
+        spec: {
+          listeners: [
+            { name: "http-8080", port: 8080, protocol: "HTTP" },
+            { name: "http-8080", port: 8081, protocol: "HTTP" },
+          ],
+        },
+      }),
+    ).toContain('spec.listeners[1].name duplicates listener "http-8080".');
+  });
+
+  it("accepts a valid set of supported manifests", () => {
     expect(
       validateManifest({
         apiVersion: "k8s.nginx.org/v1",
@@ -67,21 +185,15 @@ describe("manifest validation", () => {
         },
       }),
     ).toEqual([]);
-  });
 
-  it("rejects namespace-qualified VirtualServer TLS secret references", () => {
     expect(
       validateManifest({
-        apiVersion: "k8s.nginx.org/v1",
-        kind: "VirtualServer",
-        metadata: { name: "my-vs", namespace: "default" },
-        spec: {
-          host: "app.example.com",
-          tls: { secret: "default/example-tls-secret" },
-          upstreams: [{ name: "app", service: "nginx-service", port: 80 }],
-          routes: [{ path: "/", action: { pass: "app" } }],
-        },
+        apiVersion: "v1",
+        kind: "Secret",
+        metadata: { name: "secret-name", namespace: "default" },
+        type: "nginx.org/apikey",
+        stringData: { client1: "mykey", client2: "mykey2" },
       }),
-    ).toContain("spec.tls.secret must be a same-namespace TLS secret name, not namespace/name.");
+    ).toEqual([]);
   });
 });
