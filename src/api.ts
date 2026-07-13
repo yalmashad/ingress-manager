@@ -1,3 +1,5 @@
+import type { ServerPreflightResult } from "./preflight";
+
 export async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   const response = await fetch(input, {
     credentials: "include",
@@ -32,5 +34,14 @@ export async function selectKubeconfigContext(context: string) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ context }),
+  });
+}
+
+export async function runPreflight(manifest: Record<string, unknown>, signal?: AbortSignal) {
+  return fetchJson<ServerPreflightResult>("/api/preflight", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(manifest),
+    signal,
   });
 }

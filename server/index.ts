@@ -331,6 +331,49 @@ async function upsertResource(objectApi: KubernetesObjectApi, manifest: Kubernet
   }
 }
 
+async function preflightResource(objectApi: KubernetesObjectApi, manifest: KubernetesObject) {
+  try {
+    if (!manifest.metadata?.name) {
+      throw new Error("Manifest metadata.name is required.");
+    }
+
+    const readTarget = {
+      apiVersion: manifest.apiVersion,
+      kind: manifest.kind,
+      metadata: {
+        name: manifest.metadata.name,
+        namespace: manifest.metadata.namespace ?? undefined,
+      },
+    };
+
+    const existing = await readResource(objectApi, readTarget);
+    const candidate = {
+      ...manifest,
+      metadata: {
+        ...manifest.metadata,
+        resourceVersion: (existing as AnyRecord).metadata?.resourceVersion,
+      },
+    };
+    await objectApi.replace(candidate, undefined, "All");
+    return {
+      ok: true,
+      operation: "replace" as const,
+      message: `${manifest.kind} ${manifest.metadata.name} passed Kubernetes dry-run validation.`,
+    };
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      await objectApi.create(manifest, undefined, "All");
+      return {
+        ok: true,
+        operation: "create" as const,
+        message: `${manifest.kind} ${manifest.metadata?.name ?? ""} passed Kubernetes dry-run validation.`,
+      };
+    }
+
+    throw error;
+  }
+}
+
 app.get("/api/catalog", (_req, res) => {
   res.json({
     resourceCatalog,
@@ -557,6 +600,23 @@ app.post("/api/resource", async (req, res) => {
     const { objectApi } = requireKubeconfig(req);
     const body = await upsertResource(objectApi, manifest);
     res.json(body);
+  } catch (error) {
+    const payload = toErrorPayload(error);
+    res.status(payload.statusCode).json(payload);
+  }
+});
+
+app.post("/api/preflight", async (req, res) => {
+  try {
+    const manifest = sanitizeApplyManifest(req.body as KubernetesObject);
+    if (!manifest?.apiVersion || !manifest?.kind || !manifest?.metadata?.name) {
+      res.status(400).json({ message: "Manifest requires apiVersion, kind, and metadata.name." });
+      return;
+    }
+
+    const { objectApi } = requireKubeconfig(req);
+    const result = await preflightResource(objectApi, manifest);
+    res.json(result);
   } catch (error) {
     const payload = toErrorPayload(error);
     res.status(payload.statusCode).json(payload);

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import YAML from "yaml";
-import { fetchJson, selectKubeconfigContext, uploadKubeconfig } from "./api";
+import { fetchJson, runPreflight, selectKubeconfigContext, uploadKubeconfig } from "./api";
 import {
   builderResourceKinds,
   combineYamlDocuments,
@@ -42,10 +42,12 @@ import {
   VirtualServerRouteBuilderPanel,
   type ClusterOptions,
 } from "./builderPanels";
+import { PreflightPanel } from "./PreflightPanel";
 import { emptyManifest } from "./templates";
 import { getInitialTheme, themeStorageKey, type Theme } from "./theme";
 import { validateManifest } from "./manifestValidation";
 import { findUnknownManifestPaths, preserveUnknownManifestFields, stripRuntimeManifestFields } from "./manifestPreservation";
+import type { PreflightState } from "./preflight";
 
 type SessionStatus = {
   connected: boolean;
@@ -333,10 +335,15 @@ function accessControlConflictMessage(manifest: Record<string, unknown>) {
     : null;
 }
 
-function manifestValidationMessage(manifest: Record<string, unknown>) {
+function manifestValidationErrors(manifest: Record<string, unknown>) {
   const errors = [...validateManifest(manifest)];
   const conflictMessage = accessControlConflictMessage(manifest);
   if (conflictMessage) errors.unshift(conflictMessage);
+  return errors;
+}
+
+function manifestValidationMessage(manifest: Record<string, unknown>) {
+  const errors = manifestValidationErrors(manifest);
   return errors.length ? `Manifest validation failed:\n${errors.map((item) => `- ${item}`).join("\n")}` : "";
 }
 
@@ -411,6 +418,7 @@ function App() {
   const [selectedResourceKeys, setSelectedResourceKeys] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [generatedManifests, setGeneratedManifests] = useState<string[]>([]);
+  const [preflightState, setPreflightState] = useState<PreflightState | null>(null);
 
   function showNotice(text: string, tone: "success" | "warning" = "success") {
     setNoticeTone(tone);
@@ -561,6 +569,101 @@ function App() {
       // Preserve the last valid builder state while the user edits raw YAML.
     }
   }, [manifestText]);
+
+  useEffect(() => {
+    if (viewMode !== "edit") {
+      setPreflightState(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    const handle = window.setTimeout(async () => {
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = stripRuntimeManifestFields(YAML.parse(manifestText)) as Record<string, unknown>;
+        if (!parsed || typeof parsed !== "object") {
+          setPreflightState({
+            status: "parse-error",
+            tone: "error",
+            title: "Manifest preflight",
+            detail: "YAML must resolve to a Kubernetes manifest object.",
+          });
+          return;
+        }
+      } catch (error) {
+        setPreflightState({
+          status: "parse-error",
+          tone: "error",
+          title: "Manifest preflight",
+          detail: error instanceof Error ? error.message : "YAML parsing failed.",
+        });
+        return;
+      }
+
+      const errors = manifestValidationErrors(parsed);
+      if (errors.length) {
+        setPreflightState({
+          status: "invalid",
+          tone: "error",
+          title: "Manifest preflight failed",
+          detail: "Fix the validation errors before applying this manifest.",
+          items: errors,
+        });
+        return;
+      }
+
+      if (appMode !== "manager") {
+        setPreflightState({
+          status: "ready",
+          tone: "success",
+          title: "Manifest ready for export",
+          detail: "Local validation passed. Kubernetes dry-run is unavailable in Config-Generator mode.",
+        });
+        return;
+      }
+
+      if (!status.connected) {
+        setPreflightState({
+          status: "unavailable",
+          tone: "warning",
+          title: "Cluster preflight unavailable",
+          detail: "Connect to a cluster to run Kubernetes dry-run validation.",
+        });
+        return;
+      }
+
+      setPreflightState({
+        status: "pending",
+        tone: "warning",
+        title: "Running cluster preflight",
+        detail: "Checking the manifest with a Kubernetes dry-run request.",
+      });
+
+      try {
+        const result = await runPreflight(parsed, controller.signal);
+        setPreflightState({
+          status: "ready",
+          tone: "success",
+          title: "Cluster preflight passed",
+          detail: result.message,
+          operation: result.operation,
+        });
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        setPreflightState({
+          status: "server-error",
+          tone: "error",
+          title: "Cluster preflight failed",
+          detail: error instanceof Error ? error.message : "Kubernetes dry-run failed.",
+        });
+      }
+    }, 350);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(handle);
+    };
+  }, [appMode, manifestText, status.connected, viewMode]);
 
   async function handleImport() {
     try {
@@ -801,6 +904,7 @@ function App() {
         await copyYaml([YAML.stringify(parsed)]);
         return;
       }
+      await runPreflight(parsed);
       await submitResourceManifest(parsed, {
         onCreated: (_value) => {
           const metadata = parsed.metadata as Record<string, unknown> | undefined;
@@ -1342,6 +1446,7 @@ function App() {
                   </div>
                 </div>
                 {unsupportedFieldPaths.length ? <div className="banner warning">{unknownFieldWarning(unsupportedFieldPaths)}</div> : null}
+                <PreflightPanel state={preflightState} />
                 <textarea
                   className="manifest-editor"
                   value={manifestText}
