@@ -36,13 +36,44 @@ function equivalentSecretDataKeys(original: Obj, generated: Obj) {
   );
 }
 
+function managedSecretDataKeys(original: Obj, generated: Obj) {
+  if (original.kind !== "Secret" || generated.kind !== "Secret") return new Set<string>();
+  const secretType = typeof generated.type === "string" ? generated.type : typeof original.type === "string" ? original.type : "";
+  if (!secretType) return new Set<string>();
+
+  if (secretType === "nginx.org/apikey") {
+    const originalStringData = isObj(original.stringData) ? Object.keys(original.stringData) : [];
+    const originalData = isObj(original.data) ? Object.keys(original.data) : [];
+    const generatedStringData = isObj(generated.stringData) ? Object.keys(generated.stringData) : [];
+    const generatedData = isObj(generated.data) ? Object.keys(generated.data) : [];
+    return new Set([...originalStringData, ...originalData, ...generatedStringData, ...generatedData]);
+  }
+
+  if (secretType === "kubernetes.io/tls") return new Set(["tls.crt", "tls.key"]);
+  if (secretType === "nginx.org/htpasswd") return new Set(["htpasswd"]);
+  if (secretType === "nginx.org/ca") return new Set(["ca.crt", "ca.crl"]);
+  if (secretType === "nginx.org/oidc") return new Set(["client-secret"]);
+  if (secretType === "nginx.org/jwk") return new Set(["jwk"]);
+  return new Set<string>();
+}
+
 function stripEquivalentSecretData(original: Obj, generated: Obj) {
+  const managedKeys = managedSecretDataKeys(original, generated);
   const equivalentKeys = equivalentSecretDataKeys(original, generated);
-  if (!equivalentKeys.size || !isObj(original.data)) return original;
-  const nextData = Object.fromEntries(Object.entries(original.data).filter(([key]) => !equivalentKeys.has(key)));
+  const keysToStrip = new Set([...managedKeys, ...equivalentKeys]);
+  if (!keysToStrip.size) return original;
+
+  const nextData = isObj(original.data)
+    ? Object.fromEntries(Object.entries(original.data).filter(([key]) => !keysToStrip.has(key)))
+    : undefined;
+  const nextStringData = isObj(original.stringData)
+    ? Object.fromEntries(Object.entries(original.stringData).filter(([key]) => !keysToStrip.has(key)))
+    : undefined;
   const next = { ...original };
-  if (Object.keys(nextData).length) next.data = nextData;
+  if (nextData && Object.keys(nextData).length) next.data = nextData;
   else delete next.data;
+  if (nextStringData && Object.keys(nextStringData).length) next.stringData = nextStringData;
+  else delete next.stringData;
   return next;
 }
 
@@ -95,6 +126,14 @@ export function findUnknownManifestPaths(original: unknown, generated: unknown, 
     const path = basePath ? `${basePath}.${key}` : key;
     return key in generated ? findUnknownManifestPaths(value, generated[key], path) : [path];
   });
+}
+
+export function deriveManifestPreservation(original: unknown, generated: unknown) {
+  const unsupportedFieldPaths = findUnknownManifestPaths(original, generated);
+  return {
+    rawManifest: unsupportedFieldPaths.length ? original : null,
+    unsupportedFieldPaths,
+  };
 }
 
 export function stripRuntimeManifestFields(manifest: unknown): unknown {

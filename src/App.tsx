@@ -46,7 +46,7 @@ import { PreflightPanel } from "./PreflightPanel";
 import { emptyManifest } from "./templates";
 import { getInitialTheme, themeStorageKey, type Theme } from "./theme";
 import { validateManifest } from "./manifestValidation";
-import { findUnknownManifestPaths, preserveUnknownManifestFields, stripRuntimeManifestFields } from "./manifestPreservation";
+import { deriveManifestPreservation, findUnknownManifestPaths, preserveUnknownManifestFields, stripRuntimeManifestFields } from "./manifestPreservation";
 import type { PreflightState } from "./preflight";
 
 type SessionStatus = {
@@ -553,8 +553,11 @@ function App() {
       const parsed = stripRuntimeManifestFields(YAML.parse(manifestText)) as Record<string, unknown> | null;
       if (!parsed || typeof parsed !== "object") return;
       const supportedManifest = buildSupportedManifestFromRaw(parsed);
-      rawManifestRef.current = supportedManifest ? parsed : null;
-      setUnsupportedFieldPaths(supportedManifest ? findUnknownManifestPaths(parsed, supportedManifest) : []);
+      const preservation = supportedManifest
+        ? deriveManifestPreservation(parsed, supportedManifest)
+        : { rawManifest: null, unsupportedFieldPaths: [] as string[] };
+      rawManifestRef.current = preservation.rawManifest as Record<string, unknown> | null;
+      setUnsupportedFieldPaths(preservation.unsupportedFieldPaths);
 
       if (parsed.kind === "Policy") {
         setPolicyForm(parsePolicyManifest(parsed));

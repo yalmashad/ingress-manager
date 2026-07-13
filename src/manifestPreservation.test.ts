@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findUnknownManifestPaths, preserveUnknownManifestFields, stripRuntimeManifestFields } from "./manifestPreservation";
+import { deriveManifestPreservation, findUnknownManifestPaths, preserveUnknownManifestFields, stripRuntimeManifestFields } from "./manifestPreservation";
 
 describe("manifest preservation", () => {
   it("preserves unsupported top-level spec fields while keeping generated GUI values authoritative", () => {
@@ -122,5 +122,82 @@ describe("manifest preservation", () => {
 
     expect(findUnknownManifestPaths(original, generated)).toEqual([]);
     expect(preserveUnknownManifestFields(original, generated)).toEqual(generated);
+  });
+
+  it("removes API key secret entries deleted through the GUI after parsing manual YAML edits", () => {
+    const original = {
+      apiVersion: "v1",
+      kind: "Secret",
+      metadata: { name: "test-secret", namespace: "default" },
+      type: "nginx.org/apikey",
+      stringData: {
+        "client-1": "key1",
+        "client-2": "key2",
+        "client-3": "key3",
+      },
+    };
+    const generated = {
+      apiVersion: "v1",
+      kind: "Secret",
+      metadata: { name: "test-secret", namespace: "default" },
+      type: "nginx.org/apikey",
+      stringData: {
+        "client-1": "key1",
+      },
+    };
+
+    expect(findUnknownManifestPaths(original, generated)).toEqual([]);
+    expect(preserveUnknownManifestFields(original, generated)).toEqual(generated);
+  });
+
+  it("does not enable preservation mode when a manifest only contains supported fields", () => {
+    const original = {
+      apiVersion: "k8s.nginx.org/v1",
+      kind: "VirtualServer",
+      metadata: { name: "cafe", namespace: "default" },
+      spec: {
+        host: "cafe.example.com",
+        gunzip: true,
+      },
+    };
+    const generated = {
+      apiVersion: "k8s.nginx.org/v1",
+      kind: "VirtualServer",
+      metadata: { name: "cafe", namespace: "default" },
+      spec: {
+        host: "cafe.example.com",
+        gunzip: true,
+      },
+    };
+
+    expect(deriveManifestPreservation(original, generated)).toEqual({
+      rawManifest: null,
+      unsupportedFieldPaths: [],
+    });
+  });
+
+  it("enables preservation mode only when unsupported fields exist", () => {
+    const original = {
+      apiVersion: "k8s.nginx.org/v1",
+      kind: "VirtualServer",
+      metadata: { name: "cafe", namespace: "default" },
+      spec: {
+        host: "cafe.example.com",
+        futureFeature: { enabled: true },
+      },
+    };
+    const generated = {
+      apiVersion: "k8s.nginx.org/v1",
+      kind: "VirtualServer",
+      metadata: { name: "cafe", namespace: "default" },
+      spec: {
+        host: "cafe.example.com",
+      },
+    };
+
+    expect(deriveManifestPreservation(original, generated)).toEqual({
+      rawManifest: original,
+      unsupportedFieldPaths: ["spec.futureFeature"],
+    });
   });
 });
