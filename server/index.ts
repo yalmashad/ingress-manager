@@ -16,6 +16,14 @@ import {
 } from "@kubernetes/client-node";
 import { resourceCatalog } from "./catalog.js";
 import { rewriteLoopbackClusterServers, setKubeconfigCurrentContext } from "./kubeconfig.js";
+import {
+  ingressSecretTypeLabel,
+  isListedIngressSecret,
+  isRelevantIngressSecret,
+  isTlsSecret,
+  isTypedSecret,
+  summarizeNamedSecret,
+} from "./secrets.js";
 import { createResourceTemplate } from "./templates.js";
 
 declare module "express-session" {
@@ -201,45 +209,13 @@ function simplifyResourceList(items: AnyRecord[]) {
     reason: item.status?.reason ?? null,
     message: item.status?.message ?? null,
     summary:
-      (item.kind === "Secret" ? ingressPolicySecretTypeLabel(item.type) : null) ??
+      (item.kind === "Secret" ? ingressSecretTypeLabel(item.type) : null) ??
       item.spec?.host ??
       item.spec?.listener?.name ??
       item.spec?.listeners?.[0]?.name ??
       item.data?.["proxy-read-timeout"] ??
       null,
   }));
-}
-
-const ingressPolicySecretTypeLabels: Record<string, string> = {
-  "nginx.org/apikey": "API key secret",
-  "nginx.org/htpasswd": "HTTP password secret",
-  "nginx.org/ca": "CA cert secret",
-  "nginx.org/oidc": "OIDC secret",
-  "nginx.org/jwk": "JWK secret",
-};
-
-function isIngressPolicySecret(secret: AnyRecord) {
-  return typeof secret?.type === "string" && Object.prototype.hasOwnProperty.call(ingressPolicySecretTypeLabels, secret.type);
-}
-
-function ingressPolicySecretTypeLabel(type: unknown) {
-  return typeof type === "string" ? ingressPolicySecretTypeLabels[type] ?? type : null;
-}
-
-function isTlsSecret(secret: AnyRecord) {
-  const data = secret?.data ?? {};
-  return secret?.type === "kubernetes.io/tls" && Boolean(data["tls.crt"]) && Boolean(data["tls.key"]);
-}
-
-function isTypedSecret(secret: AnyRecord, type: string) {
-  return secret?.type === type;
-}
-
-function summarizeNamedSecret(secret: AnyRecord) {
-  return {
-    name: secret.metadata?.name,
-    namespace: secret.metadata?.namespace,
-  };
 }
 
 async function listCustomResources(customApi: CustomObjectsApi, kind: string) {
@@ -476,7 +452,7 @@ app.get("/api/overview", async (req, res) => {
       const labels = JSON.stringify(item.metadata?.labels ?? {}).toLowerCase();
       return name.includes("nginx") || labels.includes("nginx-ingress");
     });
-    const secretItems = ((secrets.items ?? []) as AnyRecord[]).filter(isIngressPolicySecret);
+    const secretItems = ((secrets.items ?? []) as AnyRecord[]).filter(isRelevantIngressSecret);
 
     const [virtualServers, virtualServerRoutes, transportServers, policies, globalConfigurations] =
       await Promise.all([
